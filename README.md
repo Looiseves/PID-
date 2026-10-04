@@ -1,14 +1,54 @@
-# PID 调参助手 v0.1.0
+# PID 调参助手 v0.2.0
 
 Windows 本地桌面软件。默认模拟设备，双击 `PID调参助手.exe` 即可使用，不需要安装 Python、联网或填写 API Key。
 
-首版为 Windows x64，已在当前 Windows 11 机器验证；未在其他 Windows 版本或全新机器验证。
+发行版为 Windows x64，已在当前 Windows 11 机器验证；未在其他 Windows 版本或全新机器验证。
+
+## 工作区和外观
+
+- **示波器**：左侧信号列表，其余区域为波形；数字看板不再挤占绘图高度。
+- **调参**：左侧控制参数，中央波形，右侧规则/模型分析；右侧标签可切换到数据监视。
+- **实验对比**：基线与当前曲线叠加，指标表可通过分隔条调整大小。
+- **F11 波形专注**：隐藏全部侧栏，再按一次恢复。视图菜单可以重新打开面板。
+- 深色仪器 / 浅色工作台两种主题。面板可以拖动、浮动、关闭；视图菜单可保存/恢复自定义布局。
+- 鼠标经过波形可读取最近采样点；滚轮缩放、拖动平移、双击适应波形。
+
+## 模型与 Codex
+
+顶部“模型 / MCP…”提供两条独立接入路径。MCP 与 API 请求都不会自动向硬件下发参数。
+
+### 通过 API Key 在软件内分析
+
+1. 填写 Base URL（例如 `https://api.openai.com/v1`）、供应商支持的模型名称和 API Key。
+2. OpenAI 和兼容供应商可选 Chat Completions；提供 Responses 的服务可选 Responses。Base URL 中保留供应商要求的 API 前缀。
+3. 保存设置后，在调参工作区切到“模型分析”，点击“发送当前实验给模型”。
+4. 请求仅在点击后发起，发送当时的抽样波形、参数、规则指标、实验备注及可选基线；采集同时继续。供应商按其 API 计费。
+5. 模型文本只展示在分析面板，实验记录和硬件参数不会被自动修改。
+
+密钥默认只存在本次运行内存。勾选记住时，使用 Windows DPAPI 在当前用户下加密，文件为 `%LOCALAPPDATA%\PIDAssistant\api-key.dpapi`。取消记住并保存会只移除这个明确命名的密钥文件。普通设置、实验导出和 MCP 快照不包含密钥。远程地址要求 HTTPS；本机模型服务可以用 HTTP。请求不自动重试、不跟随重定向。
+
+Chat Completions 对 OpenAI 使用 `max_completion_tokens`，对兼容地址使用 `max_tokens`；不同供应商仍可能有额外要求。此版本通过本机测试服务验证两类接口和失败反馈，未使用你的真实付费密钥验证某个供应商。
+
+### 让 Codex 读取桌面实验
+
+- 在“Codex MCP”标签点击“添加到本机 Codex”，或复制展示的配置。程序只添加自己的 `pid_assistant` 表，并先备份原配置；已有同名服务器时保留原设置，请核对启动路径。
+- 完整文件夹中的 `PIDAssistant-MCP.exe` 是标准 STDIO MCP 服务，由 Codex 启动，使用同文件夹运行时，不需要 Python 或 API Key。不要手动双击这个后台服务。
+- 添加后在 Codex 设置中重启 MCP 连接；保持桌面软件打开。也可在新对话中确认 `pid_assistant` 工具可用。
+- 本机共享最近最多 2048 个采样；读取工具单次最多返回 512 点。桌面完整记录仍保留至 100000 点。MCP 分析明确报告这一观察范围。
+- `get_status`：来源、连接、通道、参数和记录数量。
+- `get_recent_samples`：读取最近样本并选择通道。
+- `analyze_experiment`：返回规则依据与局限。
+- `propose_parameters`：发送待审阅的 P/I/D 建议。软件可将建议填入参数栏，随后仍需用户点击应用；没有硬件命令工具。
+- 共享可在设置中关闭；软件关闭或数据超过 10 秒未更新时，工具拒绝使用陈旧快照。新实验清除界面中的旧建议。
+- 同一用户数据目录只允许一个桌面程序实例，避免数据来源混淆。使用 `--data-dir <路径>` 可建立独立配置与共享目录。
+
+可以在 Codex 中这样说：`读取 PID 助手当前状态和最近波形，先列出证据，再给出只改变一个参数的下一次实验；不要直接建议增加控制环。`
 
 ## 快速体验
 
 1. 启动后观察波形。模拟设备在第 1 秒改变目标值。
-2. 保持参数不变记录 8–15 秒，点击“分析当前记录”。
-3. 点击“设为对比基线”，只修改一个参数并应用，然后重新开始实验。
+2. 保持参数不变记录 8–15 秒，切到“调参”工作区，点击“规则分析”。
+3. 点击“设为基线”，只修改一个参数并应用，然后重新开始实验。
 4. 在“实验对比”刷新指标，检查新旧波形与误差。
 5. “记录与回放”可保存 JSON 实验文件、导出 CSV、载入离线回放。
 6. 看板卡片的 `⋯` 可以改名字、通道和单位；看板配置可单独保存。
@@ -43,15 +83,17 @@ Windows 本地桌面软件。默认模拟设备，双击 `PID调参助手.exe` �
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe app.py
-.\.venv\Scripts\python.exe -m unittest -v test_core test_transports
-.\.venv\Scripts\python.exe app.py --smoke-test validation\source
+.\.venv\Scripts\python.exe -m unittest -v test_core test_transports test_integration
+.\.venv\Scripts\python.exe app.py --smoke-test validation\source --data-dir validation\source\profile
 .\.venv\Scripts\python.exe -m PyInstaller PIDAssistant.spec
 ```
 
 使用 `PIDAssistant.spec` 打包免安装文件夹。整个文件夹需要一起保留；不能只取出 EXE 而删除 `_internal`。
 
-重复构建时使用新的输出目录，例如 `python -m PyInstaller --distpath dist-v0.1.0-check2 PIDAssistant.spec`，保留已有构建，不清理或批量删除文件。
+重复构建时使用新的输出目录，例如 `python -m PyInstaller --distpath dist-v0.2.0-check2 PIDAssistant.spec`，保留已有构建，不清理或批量删除文件。
 
 发布前用 `verify_build.py <EXE路径> <结果JSON路径>` 检查打包代码与源码一致。发布工具为 `package_release.py <打包输出目录名>`，生成运行包、源码 ZIP、Git bundle、依赖许可和提交清单。恢复 Git 历史可以执行 `git clone <bundle路径> <新目录>`。
 
 每个交付版本对应一个 Git 提交和版本标签，变更记录在 `CHANGELOG.md`。不将开发环境、缓存、打包产物纳入 Git。
+
+标准 MCP 客户端兼容性验证（开发可选，不是运行依赖）：在独立环境安装 `mcp==2.3.0`，然后运行 `python validate_mcp.py --exe <PIDAssistant-MCP.exe路径> --data-dir validation/mcp-client-profile --output validation/mcp-client.json`。该命令创建独立模拟快照，不读取你的实时硬件记录。

@@ -66,6 +66,10 @@ def main():
                 "entrypoint": "PID调参助手.exe", "source_archive": source_archive.name,
                 "git_bundle": bundle.name, "hardware_physical_test": "not performed; demo and loopback/mock only",
                 "sha256_exe": hashlib.sha256((destination / "PID调参助手.exe").read_bytes()).hexdigest()}
+    mcp = destination / "PIDAssistant-MCP.exe"
+    if mcp.exists():
+        manifest["mcp_entrypoint"] = mcp.name
+        manifest["sha256_mcp_exe"] = hashlib.sha256(mcp.read_bytes()).hexdigest()
     (destination / "release-manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     runtime_archive = OUTPUTS / f"PIDAssistant-v{VERSION}-Windows-x64.zip"
     archive_tree(destination, runtime_archive)

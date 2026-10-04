@@ -16,35 +16,12 @@ from serial.tools import list_ports
 from core import CHANNELS, LABELS, SCENARIOS, VERSION, Experiment, Parameters, Simulator, analyze
 from protocols import StreamParser
 from transports import BleScanner, BleWorker, SerialWorker
+from integration import LocalBridge, data_directory
+from workspace_ui import build_workspace
 
 COLORS = ["#4dd5bc", "#65aaff", "#ffb86b", "#b399ff", "#ee87b7", "#cfdf83", "#e8edf4"]
 APP_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
-STYLE = """
-QWidget {font-family:'Microsoft YaHei UI';font-size:13px;color:#25344b;}
-QMainWindow,QDialog {background:#eef2f7;}
-QGroupBox {background:white;border:1px solid #dce3ed;border-radius:10px;margin-top:14px;padding:14px 10px 10px; font-weight:600;}
-QGroupBox::title {subcontrol-origin:margin;left:12px;padding:0 5px;}
-QPushButton {background:white;border:1px solid #ced8e6;border-radius:6px;padding:7px 12px;min-height:18px;}
-QPushButton:hover {background:#eaf2fc;border-color:#8daecb;}
-QPushButton:disabled {color:#98a5b7;background:#edf0f5;}
-QPushButton[primary="true"] {background:#087f8c;color:white;border:none;font-weight:600;}
-QPushButton[primary="true"]:hover {background:#096b77;}
-QLineEdit,QComboBox,QDoubleSpinBox,QSpinBox,QPlainTextEdit {background:white;border:1px solid #ccd7e5;border-radius:5px;padding:6px;selection-background-color:#087f8c;}
-QComboBox QAbstractItemView {background:white;selection-background-color:#dbeef2;color:#25344b;}
-QScrollArea {border:none;background:transparent;}
-QWidget#sidebar,QWidget#sideViewport {background:#eef2f7;}
-QWidget#channelPanel,QWidget#channelViewport {background:white;}
-QTabWidget::pane {border:1px solid #dce3ed;border-radius:8px;background:white;}
-QTabBar::tab {padding:9px 20px;background:#e8edf5;border:none;color:#65738b;}
-QTabBar::tab:selected {background:white;color:#087f8c;font-weight:600;}
-QTableWidget {border:none;gridline-color:#e5ebf3;background:white;alternate-background-color:#f5f8fc;}
-QHeaderView::section {background:#f0f4f9;border:none;padding:8px;font-weight:600;}
-QTextBrowser {background:white;border:none;padding:8px;}
-QCheckBox {spacing:5px;}
-QLabel[muted="true"] {color:#77859a;}
-QFrame[card="true"] {background:white;border:1px solid #dce3ed;border-radius:9px;}
-QStatusBar {background:white;border-top:1px solid #dce3ed;color:#66758b;}
-"""
+
 
 
 def button(text, callback=None, primary=False):
@@ -162,11 +139,13 @@ class ConnectionDialog(QtWidgets.QDialog):
 
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self):
+    def __init__(self, directory=None):
         super().__init__()
         self.setWindowTitle(f"PID 调参助手 · v{VERSION}")
-        self.resize(1440, 940)
-        self.setMinimumSize(1100, 700)
+        self.resize(1550, 940)
+        self.setMinimumSize(1050, 680)
+        self.data_dir = Path(directory or data_directory())
+        self.bridge = LocalBridge(self.data_dir)
         self.params = Parameters()
         self.previous_params = copy.copy(self.params)
         self.simulator = Simulator(self.params)
@@ -195,191 +174,36 @@ class MainWindow(QtWidgets.QMainWindow):
         self.sim_remainder = 0.0
         self.log("软件已启动；当前为本地模拟设备，不会自动连接硬件。")
         self.update_advice()
+        self.bridge_timer = QtCore.QTimer(self)
+        self.bridge_timer.setInterval(500)
+        self.bridge_timer.timeout.connect(self.publish_bridge)
+        self.bridge_timer.start()
+        self.publish_bridge()
 
     def build_ui(self):
-        root = QtWidgets.QWidget()
-        self.setCentralWidget(root)
-        outer = QtWidgets.QVBoxLayout(root)
-        outer.setContentsMargins(22, 16, 22, 10)
-        header = QtWidgets.QHBoxLayout()
-        title = QtWidgets.QLabel("PID 调参助手")
-        title.setStyleSheet("font-size:25px;font-weight:700;color:#183348;")
-        header.addWidget(title)
-        subtitle = QtWidgets.QLabel(f"实验、观察、验证   /   v{VERSION}")
-        subtitle.setProperty("muted", True)
-        header.addWidget(subtitle)
-        header.addStretch()
-        header.addWidget(button("使用说明", self.show_help))
-        outer.addLayout(header)
-        self.banner = QtWidgets.QLabel("模拟设备  ·  通用一阶模型演示，非真实小车  ·  分析采用明确规则，无需 API Key")
-        self.banner.setStyleSheet("background:#dceff0;color:#19646a;border-radius:7px;padding:9px;")
-        outer.addWidget(self.banner)
-        body = QtWidgets.QHBoxLayout()
-        outer.addLayout(body, 1)
-        sidebar = QtWidgets.QWidget()
-        sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(274)
-        left = QtWidgets.QVBoxLayout(sidebar)
-        left.setContentsMargins(0, 0, 6, 0)
-        connection = QtWidgets.QGroupBox("设备与实验")
-        layout = QtWidgets.QVBoxLayout(connection)
-        self.connection_label = QtWidgets.QLabel("● 模拟设备 / 200 Hz")
-        self.connection_label.setWordWrap(True)
-        layout.addWidget(self.connection_label)
-        self.connect_button = button("连接硬件…", self.configure_connection)
-        layout.addWidget(self.connect_button)
-        layout.addWidget(button("断开 / 返回模拟", self.return_to_simulator))
-        self.scenario = QtWidgets.QComboBox()
-        self.scenario.addItems(SCENARIOS)
-        self.scenario.currentTextChanged.connect(self.change_scenario)
-        layout.addWidget(self.scenario)
-        self.run_button = button("停止模拟", self.toggle_running, True)
-        layout.addWidget(self.run_button)
-        layout.addWidget(button("重新开始实验", self.restart))
-        left.addWidget(connection)
-        parameters = QtWidgets.QGroupBox("控制参数")
-        form = QtWidgets.QFormLayout(parameters)
-        self.spins = {}
-        for key, label in [("kp", "比例 P"), ("ki", "积分 I"), ("kd", "微分 D"), ("target", "目标值"), ("limit", "输出限幅")]:
-            spin = QtWidgets.QDoubleSpinBox()
-            spin.setDecimals(4)
-            spin.setRange(-10000 if key == "target" else (0.0001 if key == "limit" else 0), 10000)
-            spin.setSingleStep(.05 if key == "kd" else .1)
-            spin.setValue(getattr(self.params, key))
-            self.spins[key] = spin
-            form.addRow(label, spin)
-        self.apply_button = button("应用到模拟设备", self.apply_parameters, True)
-        form.addRow(self.apply_button)
-        form.addRow(button("恢复上一组参数", self.restore_parameters))
-        self.parameter_label = QtWidgets.QLabel("修改输入值后，点击应用才会生效。")
-        self.parameter_label.setWordWrap(True)
-        self.parameter_label.setProperty("muted", True)
-        form.addRow(self.parameter_label)
-        left.addWidget(parameters)
-        hardware = QtWidgets.QGroupBox("硬件参数命令")
-        h = QtWidgets.QVBoxLayout(hardware)
-        self.command_template = QtWidgets.QLineEdit()
-        self.command_template.setPlaceholderText("例如：SET {kp},{ki},{kd}\\n")
-        h.addWidget(self.command_template)
-        self.send_button = button("发送自定义命令", self.send_parameters)
-        self.send_button.setEnabled(False)
-        h.addWidget(self.send_button)
-        hint = QtWidgets.QLabel("命令格式由设备固件定义。\n发送成功不等于参数已应用。")
-        hint.setProperty("muted", True)
-        h.addWidget(hint)
-        left.addWidget(hardware)
-        left.addStretch()
-        sidebar_scroll = QtWidgets.QScrollArea()
-        sidebar_scroll.setWidgetResizable(True)
-        sidebar_scroll.setWidget(sidebar)
-        sidebar_scroll.viewport().setObjectName("sideViewport")
-        sidebar_scroll.setFixedWidth(290)
-        body.addWidget(sidebar_scroll)
-        center = QtWidgets.QVBoxLayout()
-        body.addLayout(center, 1)
-        card_header = QtWidgets.QHBoxLayout()
-        card_header.addWidget(QtWidgets.QLabel("实时数据看板"))
-        card_header.addStretch()
-        card_header.addWidget(button("＋ 添加卡片", self.add_card))
-        card_header.addWidget(button("保存看板", self.save_dashboard))
-        card_header.addWidget(button("载入看板", self.load_dashboard))
-        center.addLayout(card_header)
-        self.card_grid = QtWidgets.QGridLayout()
-        center.addLayout(self.card_grid)
-        self.rebuild_cards()
-        self.tabs = QtWidgets.QTabWidget()
-        center.addWidget(self.tabs, 1)
-        live = QtWidgets.QWidget()
-        v = QtWidgets.QVBoxLayout(live)
-        toolbar = QtWidgets.QHBoxLayout()
-        self.pause_button = button("暂停显示", self.toggle_display)
-        toolbar.addWidget(self.pause_button)
-        toolbar.addWidget(button("自动缩放", lambda: self.plot.enableAutoRange()))
-        toolbar.addWidget(QtWidgets.QLabel("显示最近"))
-        self.history = QtWidgets.QSpinBox()
-        self.history.setRange(2, 120)
-        self.history.setValue(15)
-        self.history.setSuffix(" 秒")
-        toolbar.addWidget(self.history)
-        toolbar.addStretch()
-        self.snapshot_button = button("设为对比基线", self.set_baseline)
-        toolbar.addWidget(self.snapshot_button)
-        v.addLayout(toolbar)
-        pg.setConfigOptions(antialias=True, background="#152131", foreground="#b6c7dc")
-        self.plot = pg.PlotWidget()
-        self.plot.showGrid(x=True, y=True, alpha=.18)
-        self.plot.setLabel("bottom", "时间", units="s")
-        self.plot.setLabel("left", "通道值（各自单位）")
-        self.plot.addLegend(offset=(12, 12))
-        v.addWidget(self.plot, 1)
-        channel_panel = QtWidgets.QWidget()
-        channel_panel.setObjectName("channelPanel")
-        self.channel_layout = QtWidgets.QGridLayout(channel_panel)
-        self.channel_layout.setContentsMargins(0, 0, 0, 0)
-        channel_scroll = QtWidgets.QScrollArea()
-        channel_scroll.setWidgetResizable(True)
-        channel_scroll.setWidget(channel_panel)
-        channel_scroll.viewport().setObjectName("channelViewport")
-        channel_scroll.setMinimumHeight(45)
-        channel_scroll.setMaximumHeight(90)
-        v.addWidget(channel_scroll)
-        self.setup_channels(CHANNELS)
-        v.addWidget(QtWidgets.QLabel("鼠标滚轮缩放 / 拖动平移 · 暂停显示仍继续记录 · 隐藏曲线不会停止采集"))
-        self.tabs.addTab(live, "实时波形")
-        comparison = QtWidgets.QWidget()
-        cv = QtWidgets.QVBoxLayout(comparison)
-        self.compare_label = QtWidgets.QLabel("先将当前实验设为基线，再改参数或重新实验；也可载入已保存的实验作为基线。")
-        self.compare_label.setWordWrap(True)
-        cv.addWidget(self.compare_label)
-        cv.addWidget(button("载入实验作为基线…", self.load_baseline))
-        cv.addWidget(button("刷新对比指标", self.update_comparison))
-        self.compare_plot = pg.PlotWidget()
-        self.compare_plot.showGrid(x=True, y=True, alpha=.18)
-        self.compare_plot.setLabel("bottom", "各次实验起点后的时间", units="s")
-        self.compare_plot.addLegend()
-        cv.addWidget(self.compare_plot, 1)
-        self.compare_table = QtWidgets.QTableWidget(0, 3)
-        self.compare_table.setHorizontalHeaderLabels(["观测指标", "基线实验", "当前实验"])
-        self.compare_table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
-        self.compare_table.setMaximumHeight(170)
-        cv.addWidget(self.compare_table)
-        self.tabs.addTab(comparison, "实验对比")
-        records = QtWidgets.QWidget()
-        r = QtWidgets.QVBoxLayout(records)
-        r.addWidget(QtWidgets.QLabel("实验备注（路段、速度、现象、测试条件）"))
-        self.note = QtWidgets.QPlainTextEdit()
-        self.note.setPlaceholderText("例如：相同电池、同一路段；弯道有连续左右摆动。模拟实验也可以记录观察。")
-        self.note.setMaximumHeight(110)
-        r.addWidget(self.note)
-        actions = QtWidgets.QHBoxLayout()
-        actions.addWidget(button("保存实验…", self.save_experiment))
-        actions.addWidget(button("导出 CSV…", self.export_csv))
-        actions.addWidget(button("载入实验回放…", self.load_experiment))
-        actions.addStretch()
-        r.addLayout(actions)
-        r.addWidget(QtWidgets.QLabel("操作与连接记录"))
-        self.log_view = QtWidgets.QPlainTextEdit()
-        self.log_view.setReadOnly(True)
-        self.log_view.setMaximumBlockCount(1000)
-        r.addWidget(self.log_view, 1)
-        self.tabs.addTab(records, "记录与回放")
-        advice = QtWidgets.QGroupBox("调参观察与下一次实验")
-        a = QtWidgets.QVBoxLayout(advice)
-        self.advice = QtWidgets.QTextBrowser()
-        self.advice.setMinimumHeight(130)
-        a.addWidget(self.advice)
-        controls = QtWidgets.QHBoxLayout()
-        controls.addWidget(button("分析当前记录", self.update_advice))
-        controls.addWidget(button("串级 PID 判断条件", self.show_cascade))
-        controls.addStretch()
-        label = QtWidgets.QLabel("规则分析 · 不自动改参数 · 数据不足会明确说明")
-        label.setProperty("muted", True)
-        controls.addWidget(label)
-        a.addLayout(controls)
-        advice.setMaximumHeight(235)
-        center.addWidget(advice)
-        self.stats = QtWidgets.QLabel("")
-        self.statusBar().addWidget(self.stats, 1)
+        build_workspace(self)
+
+    def publish_bridge(self, closed=False):
+        try:
+            self.experiment.note = self.note.toPlainText()
+            self.bridge.publish(self.experiment, self.source, self.hardware_connected, self.display_paused, closed)
+            self.mcp_status.setText("MCP · 本机共享" if self.bridge.enabled else "MCP · 已关闭")
+            if not closed:
+                proposal = self.bridge.take_proposal()
+                if proposal:
+                    if proposal.get("reference_parameters") != self.experiment.params:
+                        self.proposal_label.setText("参数已变化，Codex 建议已过期；请按新记录重新分析。")
+                        self.review_proposal.setEnabled(False)
+                        return
+                    self.pending_proposal = proposal
+                    values = ", ".join(f"{k.upper()}={v:g}" for k, v in proposal["parameters"].items())
+                    self.proposal_label.setText("Codex 建议（待审阅）\n" + values + "\n" + proposal["reason"])
+                    self.review_proposal.setEnabled(True)
+                    self.analysis_dock.show()
+                    self.analysis_dock.raise_()
+                    self.log("收到 Codex 参数建议；尚未应用。")
+        except (OSError, ValueError, KeyError, TypeError):
+            self.mcp_status.setText("MCP · 数据暂不可用")
 
     def setup_channels(self, names):
         self.plot.clear()
@@ -394,11 +218,12 @@ class MainWindow(QtWidgets.QMainWindow):
             color = COLORS[i % len(COLORS)]
             check = QtWidgets.QCheckBox(LABELS.get(name, name))
             check.setChecked(i < 4)
-            check.setStyleSheet(f"color:{color};background:#233247;padding:5px;border-radius:4px;")
+            check.setStyleSheet(f"QCheckBox {{color:{color};padding:5px 2px;}}")
+            check.setToolTip(name)
             curve = self.plot.plot([], [], name=LABELS.get(name, name), pen=pg.mkPen(color, width=2))
             curve.setVisible(i < 4)
             check.toggled.connect(curve.setVisible)
-            self.channel_layout.addWidget(check, i // 8, i % 8)
+            self.channel_layout.addWidget(check, i, 0)
             self.curves[name] = curve
             self.checks[name] = check
 
@@ -420,17 +245,17 @@ class MainWindow(QtWidgets.QMainWindow):
             head.addStretch()
             edit = button("⋯", lambda _, index=i: self.edit_card(index))
             edit.setFixedWidth(32)
-            edit.setStyleSheet("padding:0;border:none;background:transparent;")
+            edit.setStyleSheet("padding:0;border:none;")
             head.addWidget(edit)
             layout.addLayout(head)
             value = QtWidgets.QLabel("—")
-            value.setStyleSheet("font-size:24px;font-weight:600;color:#15505c;")
+            value.setProperty("value", True)
             layout.addWidget(value)
             binding = QtWidgets.QLabel(f"{channel}  {unit}".strip())
             binding.setProperty("muted", True)
             layout.addWidget(binding)
             self.card_values.append(value)
-            self.card_grid.addWidget(card, i // 4, i % 4)
+            self.card_grid.addWidget(card, i, 0)
 
     def card_dialog(self, definition=("自定义参数", "actual", "")):
         title, ok = QtWidgets.QInputDialog.getText(self, "看板卡片", "显示名称", text=definition[0])
@@ -507,6 +332,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.sim_remainder = 0
 
     def restart(self):
+        if hasattr(self, "review_proposal"):
+            self.pending_proposal = None
+            self.review_proposal.setEnabled(False)
+            self.proposal_label.setText("新实验已开始，旧建议不再使用。")
         self.experiment = Experiment(self.params, self.scenario.currentText(), self.source)
         self.note.clear()
         self.simulator.reset()
@@ -588,7 +417,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.apply_button.setText("更新本地参考值")
         self.apply_button.setEnabled(True)
         self.connection_label.setText("● " + self.source + " / " + s["protocol"])
-        self.banner.setText("实际设备连接  ·  横轴使用电脑接收时间  ·  参数命令由设备固件定义，发送后需回读验证")
+        self.banner.setText("实际设备 · 电脑接收时间 · 下发参数需回读确认")
         self.setup_channels(self.parser.names)
         self.restart()
         self.log("设备连接成功：" + self.source)
@@ -612,7 +441,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.connect_button.setEnabled(True)
         self.connection_label.setText("● 设备已断开；原实验记录保留")
         if self.source != "模拟设备":
-            self.banner.setText("设备已断开  ·  原记录保留供分析或保存  ·  点击返回模拟可开始新的模拟实验")
+            self.banner.setText("设备已断开 · 原记录保留")
 
     def return_to_simulator(self):
         if not self.stop_worker():
@@ -630,7 +459,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.apply_button.setText("应用到模拟设备")
         self.apply_button.setEnabled(True)
         self.connection_label.setText("● 模拟设备 / 200 Hz")
-        self.banner.setText("模拟设备  ·  通用一阶模型演示，非真实小车  ·  分析采用明确规则，无需 API Key")
+        self.banner.setText("模拟设备 · 一阶演示模型 · 非真实小车")
         self.setup_channels(CHANNELS)
         self.restart()
 
@@ -702,7 +531,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def update_advice(self):
         import html
         result = analyze(self.experiment)
-        self.advice.setHtml("<b style='color:#087f8c'>" + html.escape(result["summary"]) + "</b>"
+        self.advice.setHtml("<b>" + html.escape(result["summary"]) + "</b>"
                             + "".join("<p>" + html.escape(s) + "</p>" for s in result["findings"])
                             + "".join("<p><b>建议实验：</b>" + html.escape(s) + "</p>" for s in result["suggestions"]))
         self.update_comparison()
@@ -765,7 +594,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.setup_channels([n for n in names if n != "time"])
                 self.display_paused = False
                 self.pause_button.setText("暂停显示")
-                self.banner.setText("离线回放  ·  文件中的历史记录  ·  不会向设备发送参数")
+                self.banner.setText("离线回放 · 历史记录")
                 self.connection_label.setText("● 离线回放")
                 self.apply_button.setText("更新本地参考值")
                 self.apply_button.setEnabled(False)
@@ -806,7 +635,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.info("当前波形不足以决定是否需要串级 PID。\n\n需要明确：\n1. 每个环的输入、输出和被控量。\n2. 是否有可靠的内环反馈。\n3. 内环是否稳定，响应是否明显快于外环。\n4. 单环未达标的证据，以及新增内环能解决什么问题。\n\n先验证内环，再调外环。软件不会因为跟踪不好就自动建议增加控制环。", "串级 PID：判断条件")
 
     def show_help(self):
-        self.info("快速体验\n1. 默认模拟设备在 1 秒时改变目标值。\n2. 记录 8–15 秒，分析当前记录并设为基线。\n3. 改一个参数、点击应用，重新实验并比较。\n4. 保存实验与看板，后续可以载入回放。\n\n正常/迟缓/延迟/饱和都是演示模型，不代表具体小车。\n振荡示例可尝试较大的 P，观察延迟模型的变化。\n\n硬件接入\n串口和蓝牙虚拟 COM 选择串口方式；BLE 需设备 UUID。\n数据格式支持 FireWater、JustFloat；图像协议暂不支持。\n下发格式由固件定义；电脑发送成功不能证明设备应用。\n\n程序仅提出规则分析与实验建议，不自动调整硬件。", "使用说明")
+        self.info("快速体验\n1. 默认模拟设备在 1 秒时改变目标值。\n2. 记录 8–15 秒，分析当前记录并设为基线。\n3. 改一个参数、点击应用，重新实验并比较。\n4. 保存实验与看板，后续可以载入回放。\n\n正常/迟缓/延迟/饱和都是演示模型，不代表具体小车。\n振荡示例可尝试较大的 P，观察延迟模型的变化。\n\n硬件接入\n串口和蓝牙虚拟 COM 选择串口方式；BLE 需设备 UUID。\n数据格式支持 FireWater、JustFloat；图像协议暂不支持。\n下发格式由固件定义；电脑发送成功不能证明设备应用。\n\n工作区与模型\n顶部切换示波器、调参、实验对比；F11 隐藏侧栏放大波形。\n视图菜单可打开面板或保存自定义布局。\n模型 / MCP 中可配置 API Key，或添加本机 Codex MCP。\n模型请求只在点击后发送数据；建议先审阅再手动应用。", "使用说明")
 
     def log(self, message):
         self.log_view.appendPlainText(time.strftime("%H:%M:%S") + "  " + message)
@@ -815,7 +644,13 @@ class MainWindow(QtWidgets.QMainWindow):
         QtWidgets.QMessageBox.information(self, title, text)
 
     def closeEvent(self, event):
+        if self.api_worker and self.api_worker.isRunning():
+            self.statusBar().showMessage("模型请求尚未结束，请等待返回或超时后关闭。", 4000)
+            event.ignore()
+            return
         if self.stop_worker():
+            self.bridge_timer.stop()
+            self.publish_bridge(closed=True)
             event.accept()
         else:
             event.ignore()
@@ -824,8 +659,13 @@ class MainWindow(QtWidgets.QMainWindow):
 def main():
     app = QtWidgets.QApplication(sys.argv)
     app.setStyle("Fusion")
-    app.setStyleSheet(STYLE)
-    window = MainWindow()
+    directory = Path(sys.argv[sys.argv.index("--data-dir") + 1]) if "--data-dir" in sys.argv else data_directory()
+    directory.mkdir(parents=True, exist_ok=True)
+    lock = QtCore.QLockFile(str(directory / "desktop.lock"))
+    if not lock.tryLock(0):
+        QtWidgets.QMessageBox.information(None, "PID 调参助手", "此数据目录已有程序运行；请使用已打开的窗口。")
+        return 0
+    window = MainWindow(directory)
     window.show()
     if "--smoke-test" in sys.argv:
         from smoke import run_smoke

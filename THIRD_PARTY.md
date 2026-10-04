@@ -27,3 +27,12 @@
 - pyPIDTune（MIT）：https://github.com/PIDTuningIreland/pyPIDTune ，参考记录、分析、仿真、复测的流程；未套用其一阶加纯滞后整定器。
 
 第三方项目本身不为此 Demo 的物理控制结果背书。
+
+## v0.2.0 界面与接入参考
+
+- PlotJuggler：https://github.com/PlotJuggler/PlotJuggler ，参考大绘图区、信号列表、实验叠加和可保存布局的交互方式；未复制其代码、图标或品牌。
+- Qt Advanced Docking System：https://github.com/githubuser0xFFFF/Qt-Advanced-Docking-System ，参考 perspectives 工作区设计；本软件使用 Qt 自带 QDockWidget 独立实现，未引入 ADS 库。
+- QDarkStyleSheet：https://github.com/ColinDuquesnoy/QDarkStyleSheet ，比较其桌面控件风格；本版本调色和样式表为独立实现，未复制 QSS 或资源。
+- MCP STDIO 与工具规范：https://modelcontextprotocol.io/specification/2025-06-18/basic/transports 与 https://modelcontextprotocol.io/specification/2025-06-18/server/tools 。服务使用标准库独立实现，MCP Python SDK 仅用于隔离的兼容性验证，不打入运行包。
+- Codex 配置依据：https://learn.chatgpt.com/docs/extend/mcp?surface=cli 。
+- OpenAI Chat Completions / Responses 接口按官方 HTTP 文档实现；兼容供应商需提供兼容协议。密钥不进入源码或发行包。

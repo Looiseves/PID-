@@ -37,6 +37,8 @@ def run_smoke(app, window, folder):
 
     try:
         window.timer.stop()
+        window.bridge_timer.stop()
+        window.layout_selector.setCurrentText("调参")
         window.restart()
         generate()
         check("live_plot_contains_real_simulated_samples", len(window.curves["actual"].getData()[0]) > 100)
@@ -124,6 +126,110 @@ def run_smoke(app, window, folder):
         app.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
         window.grab().save(str(folder / "dashboard-final.png"))
         check("no_hardware_opened_during_demo_test", window.worker is None)
+        from workspace_ui import (ModelSettingsDialog, apply_theme, save_perspective,
+                                  restore_perspective, stage_proposal, toggle_focus)
+        from integration import write_proposal
+        for layout_name, screenshot in [("示波器", "scope.png"), ("调参", "tuning.png"), ("实验对比", "comparison-v2.png")]:
+            window.layout_selector.setCurrentText(layout_name)
+            app.processEvents()
+            app.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
+            check("workspace_switch_" + layout_name, window.layout_name == layout_name)
+            window.grab().save(str(folder / screenshot))
+            if layout_name == "示波器":
+                check("scope_plot_occupies_majority_of_window", window.plot.width() > window.width() * .7 and window.plot.height() > window.height() * .72)
+            if layout_name == "调参":
+                check("tuning_plot_still_tall", window.plot.height() > window.height() * .65)
+        window.layout_selector.setCurrentText("示波器")
+        toggle_focus(window)
+        app.processEvents()
+        check("focus_hides_every_dock", all(not d.isVisible() for d in window.all_docks))
+        check("focus_plot_uses_full_width", window.plot.width() > window.width() * .95)
+        toggle_focus(window)
+        app.processEvents()
+        check("focus_restores_channels", window.channels_dock.isVisible())
+        save_perspective(window)
+        window.layout_selector.setCurrentText("调参")
+        restore_perspective(window)
+        check("custom_workspace_restores", window.layout_name == "示波器" and window.channels_dock.isVisible())
+        window.theme_selector.setCurrentText("浅色工作台")
+        app.processEvents()
+        check("light_theme_applies_to_plot", window.plot.backgroundBrush().color().name() == "#fafafa")
+        window.grab().save(str(folder / "scope-light.png"))
+        window.theme_selector.setCurrentText("深色仪器")
+        window.resize(1100, 720)
+        app.processEvents()
+        check("compact_window_plot_remains_large", window.plot.height() > 480 and window.plot.width() > 760)
+        window.grab().save(str(folder / "scope-compact.png"))
+        window.resize(1550, 940)
+        window.publish_bridge()
+        from mcp_server import call_tool
+        check("mcp_reads_current_window", call_tool(window.data_dir, "get_status", {})["parameters"] == window.experiment.params)
+        before_params = window.params.kp
+        write_proposal(window.data_dir, {"kp": 1.7}, "只改变 P，比较波动和误差 RMS。")
+        window.publish_bridge()
+        check("mcp_proposal_does_not_apply", window.params.kp == before_params and window.review_proposal.isEnabled())
+        click(window.review_proposal)
+        check("proposal_stages_without_applying", window.spins["kp"].value() == 1.7 and window.params.kp == before_params)
+        dialog = ModelSettingsDialog(window)
+        dialog.key.setText("dummy-secret-ui-validation")
+        dialog.base_url.setText("https://example.invalid/v1")
+        dialog.model.setText("test-model")
+        dialog.remember.setChecked(False)
+        dialog.save()
+        settings = json.loads((window.data_dir / "model-settings.json").read_text(encoding="utf-8"))
+        check("model_settings_exclude_api_key", "dummy-secret-ui-validation" not in json.dumps(settings) and window.api_key == "dummy-secret-ui-validation")
+        check("key_hidden_in_settings", dialog.key.echoMode() == QtWidgets.QLineEdit.EchoMode.Password)
+        window.api_key = ""
+        window.publish_bridge()
+        check("mcp_snapshot_excludes_api_credentials", "dummy-secret-ui-validation" not in (window.data_dir / "snapshot.json").read_text(encoding="utf-8"))
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        api_requests = []
+        class ApiHandler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                api_requests.append(body)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"choices": [{"message": {"content": "验证建议：保持其他条件，单独降低 P 后比较波动。"}}], "usage": {"total_tokens": 36}}).encode())
+        server = HTTPServer(("127.0.0.1", 0), ApiHandler)
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        try:
+            window.api_key = "dummy-local-ui-key"
+            window.model_settings.update({"base_url": f"http://127.0.0.1:{server.server_port}/v1", "model": "test-model", "api_mode": "Chat Completions"})
+            window.layout_selector.setCurrentText("调参")
+            window.analysis_tabs.setCurrentIndex(1)
+            app.processEvents()
+            old_params = window.params.kp
+            click(window.ai_button)
+            deadline = time.monotonic() + 8
+            while window.api_worker and window.api_worker.isRunning() and time.monotonic() < deadline:
+                app.processEvents()
+                QTest.qWait(20)
+            app.processEvents()
+            check("api_button_executes_real_http_and_displays_result", len(api_requests) == 1 and "验证建议" in window.ai_result.toPlainText())
+            check("api_analysis_keeps_parameters_and_device_unchanged", window.params.kp == old_params and window.worker is None)
+            check("api_worker_restores_button_and_shows_usage", window.ai_button.isEnabled() and "36" in window.ai_status.text())
+            window.grab().save(str(folder / "model-analysis.png"))
+        finally:
+            server.shutdown()
+            server.server_close()
+            server_thread.join(timeout=2)
+            window.api_key = ""
+        settings_dialog = ModelSettingsDialog(window)
+        settings_dialog.model.setText("")
+        settings_dialog.base_url.setText("https://api.openai.com/v1")
+        settings_dialog.show()
+        app.processEvents()
+        settings_dialog.grab().save(str(folder / "model-settings.png"))
+        settings_dialog.reject()
+        window.layout_selector.setCurrentText("示波器")
+        app.processEvents()
+        window.grab().save(str(folder / "final-scope.png"))
         (folder / "smoke-result.json").write_text(json.dumps({"passed": True, "checks": checks}, ensure_ascii=False, indent=2), encoding="utf-8")
         window.close()
         app.exit(0)

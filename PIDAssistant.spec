@@ -26,4 +26,11 @@ a.binaries = [entry for entry in a.binaries
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='PID调参助手', debug=False,
           bootloader_ignore_signals=False, strip=False, upx=False, console=False)
-coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name='PIDAssistant-v0.1.0')
+m = Analysis([str(project / 'mcp_server.py')], pathex=[str(project)], binaries=[], datas=[],
+             hiddenimports=[], hookspath=[], hooksconfig={}, runtime_hooks=[],
+             excludes=['PySide6', 'numpy', 'pyqtgraph', 'bleak', 'serial'], noarchive=False)
+mcp_pyz = PYZ(m.pure)
+mcp_exe = EXE(mcp_pyz, m.scripts, [], exclude_binaries=True, name='PIDAssistant-MCP',
+              debug=False, strip=False, upx=False, console=True)
+coll = COLLECT(exe, mcp_exe, a.binaries, a.datas, m.binaries, m.datas,
+               strip=False, upx=False, name='PIDAssistant-v0.2.0')

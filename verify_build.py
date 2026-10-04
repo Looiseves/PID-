@@ -40,10 +40,21 @@ def main():
     result["matches_current_source"] = result["source_code_fingerprint"] == result["exe_code_fingerprint"]
     pyz = archive.open_embedded_archive("PYZ.pyz")
     result["module_matches"] = {}
-    for name in ("core", "protocols", "transports", "smoke"):
+    for name in ("core", "protocols", "transports", "smoke", "integration", "workspace_ui"):
         expected = compile((project / (name + ".py")).read_text(encoding="utf-8"), name + ".py", "exec", dont_inherit=True, optimize=0)
         result["module_matches"][name] = fingerprint(expected) == fingerprint(pyz.extract(name))
     result["matches_current_source"] = result["matches_current_source"] and all(result["module_matches"].values())
+    mcp_path = executable.parent / "PIDAssistant-MCP.exe"
+    if mcp_path.exists():
+        mcp_archive = CArchiveReader(str(mcp_path))
+        expected = compile((project / "mcp_server.py").read_text(encoding="utf-8"), "mcp_server.py", "exec", dont_inherit=True, optimize=0)
+        result["mcp_entry_matches"] = fingerprint(expected) == fingerprint(marshal.loads(mcp_archive.extract("mcp_server")))
+        mcp_pyz = mcp_archive.open_embedded_archive("PYZ.pyz")
+        result["mcp_module_matches"] = {}
+        for name in ("core", "integration"):
+            expected = compile((project / (name + ".py")).read_text(encoding="utf-8"), name + ".py", "exec", dont_inherit=True, optimize=0)
+            result["mcp_module_matches"][name] = fingerprint(expected) == fingerprint(mcp_pyz.extract(name))
+        result["matches_current_source"] = result["matches_current_source"] and result["mcp_entry_matches"] and all(result["mcp_module_matches"].values())
     print(json.dumps(result, indent=2))
     if len(sys.argv) > 2:
         Path(sys.argv[2]).write_text(json.dumps(result, indent=2), encoding="utf-8")
