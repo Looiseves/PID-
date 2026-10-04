@@ -14,10 +14,11 @@ import pyqtgraph as pg
 from serial.tools import list_ports
 
 from core import CHANNELS, LABELS, SCENARIOS, VERSION, Experiment, Parameters, Simulator, analyze
-from protocols import StreamParser
 from transports import BleScanner, BleWorker, SerialWorker
 from integration import LocalBridge, data_directory
 from workspace_ui import build_workspace
+from pid_link import PROTOCOL, make_parser
+import live_tuning
 
 COLORS = ["#4dd5bc", "#65aaff", "#ffb86b", "#b399ff", "#ee87b7", "#cfdf83", "#e8edf4"]
 APP_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
@@ -69,7 +70,7 @@ class ConnectionDialog(QtWidgets.QDialog):
         form.addRow("BLE 通知 UUID", self.notify)
         form.addRow("BLE 写入 UUID", self.write)
         self.protocol = QtWidgets.QComboBox()
-        self.protocol.addItems(["FireWater", "JustFloat"])
+        self.protocol.addItems(["FireWater", "JustFloat", PROTOCOL])
         self.protocol.setCurrentText(settings.get("protocol", "FireWater"))
         form.addRow("上报数据协议", self.protocol)
         self.names = QtWidgets.QLineEdit(settings.get("names", "target,actual,error,output"))
@@ -122,7 +123,9 @@ class ConnectionDialog(QtWidgets.QDialog):
     def validate(self):
         try:
             s = self.settings()
-            StreamParser(s["protocol"], [n.strip() for n in s["names"].split(",")])
+            make_parser(s["protocol"], [n.strip() for n in s["names"].split(",")])
+            if s["protocol"] == PROTOCOL and s["kind"] != 0:
+                raise ValueError("本版实时调参使用串口 / 蓝牙虚拟串口；BLE 仍使用原来的数值协议")
             if s["kind"] == 0 and (not s["port"] or s["baud"] <= 0):
                 raise ValueError("请填写有效串口和波特率")
             if s["kind"] == 1 and (not s["address"] or not s["notify_uuid"]):
@@ -164,6 +167,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.card_definitions = [("目标值", "target", ""), ("实际值", "actual", ""),
                                  ("跟踪误差", "error", ""), ("控制输出", "output", "")]
         self.card_values = []
+        self.pid_markers = []
         self.build_ui()
         self.timer = QtCore.QTimer(self)
         self.timer.setInterval(33)
@@ -186,7 +190,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def publish_bridge(self, closed=False):
         try:
             self.experiment.note = self.note.toPlainText()
-            self.bridge.publish(self.experiment, self.source, self.hardware_connected, self.display_paused, closed)
+            device_parameters = self.pid_session.snapshot() if self.pid_session else None
+            self.bridge.publish(self.experiment, self.source, self.hardware_connected, self.display_paused, closed, device_parameters)
             self.mcp_status.setText("MCP · 本机共享" if self.bridge.enabled else "MCP · 已关闭")
             if not closed:
                 proposal = self.bridge.take_proposal()
@@ -207,6 +212,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def setup_channels(self, names):
         self.plot.clear()
+        self.pid_markers = []
         self.curves = {}
         self.checks = {}
         while self.channel_layout.count():
@@ -337,12 +343,17 @@ class MainWindow(QtWidgets.QMainWindow):
             self.review_proposal.setEnabled(False)
             self.proposal_label.setText("新实验已开始，旧建议不再使用。")
         self.experiment = Experiment(self.params, self.scenario.currentText(), self.source)
+        for marker in self.pid_markers:
+            self.plot.removeItem(marker)
+        self.pid_markers = []
         self.note.clear()
         self.simulator.reset()
         self.sim_remainder = 0
         self.host_origin = time.monotonic()
         if self.parser:
-            self.parser = StreamParser(self.parser.protocol, self.parser.names)
+            self.parser = make_parser(self.parser.protocol, self.parser.names)
+        if self.pid_session:
+            live_tuning.confirmation(self, self.pid_session.snapshot()["status"])
         for curve in self.curves.values():
             curve.setData([], [])
         for value in self.card_values:
@@ -359,9 +370,22 @@ class MainWindow(QtWidgets.QMainWindow):
     def read_parameters(self):
         return Parameters(**{key: spin.value() for key, spin in self.spins.items()})
 
+    def mark_pid_confirmation(self):
+        when = self.experiment.samples[-1]["time"] if self.experiment.samples else 0
+        text = f"确认 P={self.params.kp:g} I={self.params.ki:g} D={self.params.kd:g}"
+        marker = pg.InfiniteLine(when, angle=90, pen=pg.mkPen("#ffb86b", style=QtCore.Qt.PenStyle.DashLine), label=text,
+                                 labelOpts={"position": .88, "color": "#ffb86b", "movable": False})
+        self.plot.addItem(marker)
+        self.pid_markers.append(marker)
+        if len(self.pid_markers) > 12:
+            self.plot.removeItem(self.pid_markers.pop(0))
+
     def apply_parameters(self):
         if self.source == "离线回放":
             self.info("回放保留历史参数；请返回模拟后再修改。")
+            return
+        if self.pid_session:
+            live_tuning.submit(self)
             return
         candidate = self.read_parameters()
         candidate.validate()
@@ -392,7 +416,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self.connection_settings = dialog.settings()
         s = self.connection_settings
-        self.parser = StreamParser(s["protocol"], [n.strip() for n in s["names"].split(",")])
+        self.parser = make_parser(s["protocol"], [n.strip() for n in s["names"].split(",")])
         self.worker = (SerialWorker(s["port"], s["baud"], self) if s["kind"] == 0 else
                        BleWorker(s["address"], s["notify_uuid"], s["write_uuid"], self))
         self.worker.received.connect(self.receive)
@@ -403,6 +427,24 @@ class MainWindow(QtWidgets.QMainWindow):
         self.connecting = True
         self.connect_button.setEnabled(False)
         self.connection_label.setText("正在连接设备……")
+        self.worker.start()
+
+    def start_live_demo(self):
+        if not self.stop_worker():
+            return
+        live_tuning.stop(self)
+        from demo_board import DemoBoardWorker
+        self.connection_settings = {"kind": 0, "port": "虚拟板端（非真实小车）", "baud": 115200,
+                                    "protocol": PROTOCOL, "names": "target,actual,error,output"}
+        self.parser = make_parser(PROTOCOL, ["target", "actual", "error", "output"])
+        self.worker = DemoBoardWorker(self)
+        self.worker.received.connect(self.receive)
+        self.worker.connected.connect(self.on_connected)
+        self.worker.failed.connect(self.on_failure)
+        self.worker.sent.connect(self.log)
+        self.worker.finished.connect(self.on_worker_finished)
+        self.connect_button.setEnabled(False)
+        self.connecting = True
         self.worker.start()
 
     def on_connected(self):
@@ -421,12 +463,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setup_channels(self.parser.names)
         self.restart()
         self.log("设备连接成功：" + self.source)
+        if s["protocol"] == PROTOCOL:
+            live_tuning.start(self)
 
     def receive(self, data):
         if not self.hardware_connected or not self.parser:
             return
         timestamp = time.monotonic() - self.host_origin
         for frame in self.parser.feed(data):
+            if "_pid_control" in frame:
+                live_tuning.receive(self, frame["_pid_control"])
+                continue
             frame["time"] = timestamp
             self.experiment.append(frame)
 
@@ -437,15 +484,21 @@ class MainWindow(QtWidgets.QMainWindow):
     def on_worker_finished(self):
         self.connecting = False
         self.hardware_connected = False
+        if self.pid_session:
+            live_tuning.confirmation(self, "unknown")
+            live_tuning.stop(self)
+            self.apply_button.setEnabled(False)
         self.send_button.setEnabled(False)
         self.connect_button.setEnabled(True)
-        self.connection_label.setText("● 设备已断开；原实验记录保留")
         if self.source != "模拟设备":
+            self.connection_label.setText("● 设备已断开；原实验记录保留")
             self.banner.setText("设备已断开 · 原记录保留")
 
     def return_to_simulator(self):
         if not self.stop_worker():
             return
+        live_tuning.stop(self)
+        self.simulator.params = self.params
         self.source = "模拟设备"
         self.parser = None
         self.hardware_connected = False

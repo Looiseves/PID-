@@ -1,10 +1,26 @@
-# PID 调参助手 v0.2.0
+# PID 调参助手 v0.3.0
 
 Windows 本地桌面软件。默认模拟设备，双击 `PID调参助手.exe` 即可使用，不需要安装 Python、联网或填写 API Key。
 
-项目仓库：[Looiseves/PID-](https://github.com/Looiseves/PID-)。Windows 运行包在 [Releases](https://github.com/Looiseves/PID-/releases) 下载，解压后保留完整文件夹，再启动 `PID调参助手.exe`。仓库中的源码与 `v0.1.0`、`v0.2.0` 标签保留每个版本的开发历史。
+项目仓库：[Looiseves/PID-](https://github.com/Looiseves/PID-)。Windows 运行包在 [Releases](https://github.com/Looiseves/PID-/releases) 下载，解压后保留完整文件夹，再启动 `PID调参助手.exe`。每个交付版本对应独立的 Git 提交和标签。
 
 发行版为 Windows x64，已在当前 Windows 11 机器验证；未在其他 Windows 版本或全新机器验证。
+
+## 边看波形边调 PID
+
+在“调参”工作区，波形与 P/I/D 控制栏同时显示。v0.3.0 增加了运行时参数读写与确认流程：
+
+1. 没有小车时，点击“体验串口调参（虚拟板端）”，体验相同字节协议下的读取、应用与回复流程。这不会打开真实串口。
+2. 接真实设备时，先在已有固件中接入随发行版提供的 `firmware/pid_link.c` / `.h`；详见 `firmware/README.md`。然后选择串口与 `PIDLink（实时调参）`。
+3. 软件读取板上实际 P/I/D 与控制环名称。修改输入值后点击“应用到小车”；波形采集持续运行，回复匹配当前请求后才确认生效。
+4. 开启“实时应用（改值后发送）”，停止修改 400 毫秒后发送最后一组 P/I/D。上一条请求尚未确认时不积压参数命令。
+5. 波形中的虚线标出电脑收到应用确认的时刻与实际 P/I/D；不代表单片机的精确生效时间。显示最近 12 个确认标记，完整事件仍在实验记录中。
+6. 板端拒绝、回读值不同或回复超时时会明确显示；不重试 SET。参数状态未知时继续记录波形，但暂停基于固定 PID 的规则分析。点击“读取板上 PID”重新确认。
+7. 定期回读可以观察 IDE 或其他代码造成的参数变化；发生外部变化、控制环变更或板端版本重置时，暂停实时应用，避免继续覆盖。
+
+“输入值”与“板上实际值”分别显示。目标值与输出限幅在本版 PIDLink 中只是原有分析参考，不会下发，也没有被设备确认。Codex 建议填入参数栏时暂停实时应用，仍需你审阅并点击应用。
+
+这个版本完成了桌面协议与通用固件接口，尚未接入你的具体小车工程。真实设备需要固件把参数绑定到已有 PID，按实际单位、范围与控制周期处理。运行时调参不需要每次重新烧录；重新上电后的默认值、写 Flash、IDE 编译烧录与源码同步尚未实现。
 
 ## 工作区和外观
 
@@ -85,14 +101,15 @@ Chat Completions 对 OpenAI 使用 `max_completion_tokens`，对兼容地址使�
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe app.py
-.\.venv\Scripts\python.exe -m unittest -v test_core test_transports test_integration
+.\.venv\Scripts\python.exe -m unittest -v test_core test_transports test_integration test_pid_link
 .\.venv\Scripts\python.exe app.py --smoke-test validation\source --data-dir validation\source\profile
+.\.venv\Scripts\python.exe validate_firmware.py
 .\.venv\Scripts\python.exe -m PyInstaller PIDAssistant.spec
 ```
 
 使用 `PIDAssistant.spec` 打包免安装文件夹。整个文件夹需要一起保留；不能只取出 EXE 而删除 `_internal`。
 
-重复构建时使用新的输出目录，例如 `python -m PyInstaller --distpath dist-v0.2.0-check2 PIDAssistant.spec`，保留已有构建，不清理或批量删除文件。
+重复构建时使用新的输出目录，例如 `python -m PyInstaller --distpath dist-v0.3.0-check2 PIDAssistant.spec`，保留已有构建，不清理或批量删除文件。
 
 发布前用 `verify_build.py <EXE路径> <结果JSON路径>` 检查打包代码与源码一致。发布工具为 `package_release.py <打包输出目录名>`，生成运行包、源码 ZIP、Git bundle、依赖许可和提交清单。恢复 Git 历史可以执行 `git clone <bundle路径> <新目录>`。
 

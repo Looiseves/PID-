@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import mean
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 CHANNELS = ["target", "actual", "error", "output", "p_term", "i_term", "d_term"]
 LABELS = dict(zip(CHANNELS, ["目标值", "实际值", "误差", "控制输出", "P 分量", "I 分量", "D 分量"]))
 SCENARIOS = ["正常跟踪", "响应迟缓", "振荡与延迟", "执行端饱和"]
@@ -165,6 +165,9 @@ class Experiment:
 def analyze(experiment):
     samples = list(experiment.samples)
     insufficient = {"ready": False, "metrics": {}, "findings": [], "suggestions": []}
+    confirmation = next((e["device_parameter_confirmation"] for e in reversed(experiment.events) if "device_parameter_confirmation" in e), None)
+    if confirmation is not None and confirmation != "confirmed":
+        return {**insufficient, "summary": "板上 PID 参数尚未确认；波形仍记录，请先回读实际参数再分析。"}
     if len(samples) < 20 or samples[-1]["time"] - samples[0]["time"] < 2:
         return {**insufficient, "summary": "证据不足：请至少记录 2 秒数据，再进行分析。"}
     required = {"target", "actual", "output"}

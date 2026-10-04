@@ -56,6 +56,7 @@ def main():
     shutil.copytree(runtime_source, destination, dirs_exist_ok=True)
     for name in ("README.md", "CHANGELOG.md", "THIRD_PARTY.md", "VALIDATION.md", "LICENSE"):
         shutil.copy2(PROJECT / name, destination / name)
+    shutil.copytree(PROJECT / "firmware", destination / "firmware", dirs_exist_ok=True)
     collect_licenses(destination)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=PROJECT, text=True).strip()
     source_archive = OUTPUTS / f"PIDAssistant-v{VERSION}-source.zip"

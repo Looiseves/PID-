@@ -262,6 +262,7 @@ def build_workspace(w):
     c.addWidget(w.connection_label)
     w.connect_button = push("连接硬件…", w.configure_connection)
     c.addWidget(w.connect_button)
+    c.addWidget(push("体验串口调参（虚拟板端）", w.start_live_demo))
     w.scenario = QtWidgets.QComboBox()
     w.scenario.addItems(SCENARIOS)
     w.scenario.currentTextChanged.connect(w.change_scenario)
@@ -271,6 +272,7 @@ def build_workspace(w):
     c.addWidget(push("重新开始实验", w.restart))
     parameters = QtWidgets.QGroupBox("控制参数")
     form = QtWidgets.QFormLayout(parameters)
+    w.parameter_form = form
     w.spins = {}
     for key, label in [("kp", "P"), ("ki", "I"), ("kd", "D"), ("target", "目标值"), ("limit", "输出限幅")]:
         spin = QtWidgets.QDoubleSpinBox()
@@ -286,6 +288,8 @@ def build_workspace(w):
     w.parameter_label = QtWidgets.QLabel("修改后点击应用。")
     w.parameter_label.setWordWrap(True)
     form.addRow(w.parameter_label)
+    from live_tuning import add_controls
+    add_controls(w, form)
     c.addWidget(parameters)
     hardware = QtWidgets.QGroupBox("硬件命令")
     h = QtWidgets.QVBoxLayout(hardware)
@@ -628,9 +632,11 @@ def api_result(w, text, usage):
 def stage_proposal(w):
     if not w.pending_proposal:
         return
+    from live_tuning import pause_auto
+    pause_auto(w)
     for key, value in w.pending_proposal["parameters"].items():
         w.spins[key].setValue(value)
     w.layout_selector.setCurrentText("调参")
-    w.parameter_label.setText("已填入 Codex 建议；点击应用才会更新本地参数。")
+    w.parameter_label.setText("已填入 Codex 建议，实时应用已暂停；点击应用后才会修改参数。")
     w.review_proposal.setEnabled(False)
     w.proposal_label.setText("建议已填入参数栏，尚未应用。")

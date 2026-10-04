@@ -230,6 +230,8 @@ def run_smoke(app, window, folder):
         window.layout_selector.setCurrentText("示波器")
         app.processEvents()
         window.grab().save(str(folder / "final-scope.png"))
+        from smoke_live import run_live
+        run_live(app, window, folder, check)
         (folder / "smoke-result.json").write_text(json.dumps({"passed": True, "checks": checks}, ensure_ascii=False, indent=2), encoding="utf-8")
         window.close()
         app.exit(0)

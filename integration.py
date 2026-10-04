@@ -35,7 +35,7 @@ class LocalBridge:
         self.enabled = True
         self.seen_proposal = None
 
-    def publish(self, experiment, source, connected, paused, closed=False):
+    def publish(self, experiment, source, connected, paused, closed=False, device_parameters=None):
         if not hasattr(experiment, "_bridge_id"):
             experiment._bridge_id = uuid.uuid4().hex
         self.experiment_id = experiment._bridge_id
@@ -46,6 +46,7 @@ class LocalBridge:
             "sharing_enabled": self.enabled, "closed": closed,
             "source": source, "hardware_connected": connected, "display_paused": paused,
             "total_retained_samples": len(experiment.samples),
+            "device_parameters": device_parameters,
             "experiment": {"parameters": experiment.params, "scenario": experiment.scenario,
                            "source": experiment.source, "samples": samples if self.enabled else [],
                            "events": experiment.events[-100:] if self.enabled else [],

@@ -40,7 +40,7 @@ def main():
     result["matches_current_source"] = result["source_code_fingerprint"] == result["exe_code_fingerprint"]
     pyz = archive.open_embedded_archive("PYZ.pyz")
     result["module_matches"] = {}
-    for name in ("core", "protocols", "transports", "smoke", "integration", "workspace_ui"):
+    for name in ("core", "protocols", "transports", "smoke", "integration", "workspace_ui", "pid_link", "live_tuning", "smoke_live", "demo_board"):
         expected = compile((project / (name + ".py")).read_text(encoding="utf-8"), name + ".py", "exec", dont_inherit=True, optimize=0)
         result["module_matches"][name] = fingerprint(expected) == fingerprint(pyz.extract(name))
     result["matches_current_source"] = result["matches_current_source"] and all(result["module_matches"].values())

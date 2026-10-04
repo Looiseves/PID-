@@ -45,7 +45,8 @@ def call_tool(directory, name, arguments):
             "snapshot_age_seconds": round(time.time() - snapshot["published_at"], 3),
             "parameters": obj["parameters"], "scenario": obj["scenario"],
             "channels": list(obj["samples"][-1]) if obj["samples"] else [],
-            "device_parameter_confirmation": "not verified", "hardware_write_tools": False}
+            "device_parameter_confirmation": (snapshot.get("device_parameters") or {}).get("status", "not verified"),
+            "device_parameters": snapshot.get("device_parameters"), "hardware_write_tools": False}
     if name == "get_recent_samples":
         limit = arguments.get("limit", 200)
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 512:
