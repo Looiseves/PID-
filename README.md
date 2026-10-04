@@ -2,6 +2,8 @@
 
 Windows 本地桌面软件。默认模拟设备，双击 `PID调参助手.exe` 即可使用，不需要安装 Python、联网或填写 API Key。
 
+项目仓库：[Looiseves/PID-](https://github.com/Looiseves/PID-)。Windows 运行包在 [Releases](https://github.com/Looiseves/PID-/releases) 下载，解压后保留完整文件夹，再启动 `PID调参助手.exe`。仓库中的源码与 `v0.1.0`、`v0.2.0` 标签保留每个版本的开发历史。
+
 发行版为 Windows x64，已在当前 Windows 11 机器验证；未在其他 Windows 版本或全新机器验证。
 
 ## 工作区和外观
