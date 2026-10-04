@@ -1,0 +1,22 @@
+[
+  {
+    "source": "https://github.com/qt/qtbase/blob/dev/LICENSES/LGPL-3.0-only.txt",
+    "file": "third_party_licenses\\qt-qtbase-LGPL-3.0-only.txt",
+    "bytes": 7651
+  },
+  {
+    "source": "https://github.com/qt/qtbase/blob/dev/LICENSES/GPL-3.0-only.txt",
+    "file": "third_party_licenses\\qt-qtbase-GPL-3.0-only.txt",
+    "bytes": 35147
+  },
+  {
+    "source": "https://github.com/pyserial/pyserial/blob/master/LICENSE.txt",
+    "file": "third_party_licenses\\pyserial-pyserial-LICENSE.txt",
+    "bytes": 1886
+  },
+  {
+    "source": "https://github.com/pywinrt/pywinrt/blob/main/LICENSE",
+    "file": "third_party_licenses\\pywinrt-pywinrt-LICENSE",
+    "bytes": 1225
+  }
+]
