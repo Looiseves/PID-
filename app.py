@@ -682,35 +682,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tabs.setCurrentIndex(1)
 
     def update_comparison(self):
-        if not self.baseline:
-            return
-        self.compare_plot.clear()
-        for experiment, title, style in [(self.baseline, "基线", QtCore.Qt.PenStyle.DashLine),
-                                          (self.experiment, "当前", QtCore.Qt.PenStyle.SolidLine)]:
-            data = list(experiment.samples)
-            if not data:
-                continue
-            data = data[::max(1, len(data) // 2500)]
-            x = [s["time"] - data[0]["time"] for s in data]
-            for i, channel in enumerate(["target", "actual"]):
-                self.compare_plot.plot(x, [s.get(channel, float("nan")) for s in data],
-                                       name=f"{title} · {LABELS[channel]}", pen=pg.mkPen(COLORS[i], width=2, style=style))
-        base = analyze(self.baseline)
-        current = analyze(self.experiment)
-        keys = list(dict.fromkeys(list(base["metrics"]) + list(current["metrics"])))
-        self.compare_table.setRowCount(len(keys))
-        for row, key in enumerate(keys):
-            for col, value in enumerate([key, base["metrics"].get(key), current["metrics"].get(key)]):
-                text = value if isinstance(value, str) else ("证据不足" if value is None else f"{value:.4f}")
-                item = QtWidgets.QTableWidgetItem(text)
-                if col:
-                    item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
-                self.compare_table.setItem(row, col, item)
-        changed = self.baseline.params != self.experiment.params
-        context_changed = self.baseline.scenario != self.experiment.scenario or self.baseline.source != self.experiment.source
-        self.compare_label.setText(f"基线 {len(self.baseline.samples):,} 样本 / 当前 {len(self.experiment.samples):,} 样本。"
-                                   + ("参数已变化。" if changed else "参数相同。")
-                                   + ("来源或场景不同，指标不宜直接归因于 PID。" if context_changed else "请确认两次目标幅度和测试条件可比。"))
+        from comparison_tools import update
+        update(self)
 
     def update_advice(self):
         import html
