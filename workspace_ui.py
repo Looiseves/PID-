@@ -28,6 +28,7 @@ def theme_styles(name):
     p = PALETTES[name]
     primary_text = "#112438" if name == "深色仪器" else "#ffffff"
     error_text = "#e1a0a3" if name == "深色仪器" else "#b04a4a"
+    warning_text = '#ddba8c' if name == '深色仪器' else '#986137'
     root = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
     icons = (root / 'assets/ui').as_posix()
     mode = 'dark' if name == '深色仪器' else 'light'
@@ -40,6 +41,7 @@ QLabel[role="heading"] {{font-size:20px;font-weight:600;}}
 QLabel[role="section"] {{font-size:13px;font-weight:600;}}
 QLabel[role="filename"] {{font-size:15px;font-weight:600;}}
 QLabel[tone="error"] {{color:{error_text};}}
+QLabel[tone="warning"] {{color:{warning_text};}}
 QMenuBar,QMenu,QToolBar,QStatusBar {{background:{p['panel']};color:{p['text']};}}
 QToolBar {{spacing:7px;padding:3px 8px;border:0;border-bottom:1px solid {p['border']};}}
 QToolBar::separator {{background:{p['border']};width:1px;margin:7px 5px;}}

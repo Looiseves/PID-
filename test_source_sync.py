@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from unittest.mock import patch
 
-from source_sync import SourceFile, decode_source, replace_gains, scan_candidates
+from source_sync import SourceFile, decode_source, replace_gains, scan_candidates, MAX_BYTES
 
 
 TEXT = '// 中文注释 kp = 999;\n#define LINE_KP 1.2f\nfloat ki = 0.0f;\npid.kd = 8e-2f;\n'
@@ -25,6 +25,12 @@ class SourceTests(unittest.TestCase):
 
     def source(self):
         return SourceFile.open(self.root, self.file)
+
+    def test_external_oversized_change_is_rejected(self):
+        source = self.source()
+        self.file.write_bytes(b'x'*(MAX_BYTES+1))
+        with self.assertRaises(ValueError):
+            source.check_current()
 
     def bindings(self, text=TEXT):
         return dict(zip(('kp', 'ki', 'kd'), scan_candidates(text)))

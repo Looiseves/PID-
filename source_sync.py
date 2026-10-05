@@ -128,7 +128,9 @@ class SourceFile:
 
     def check_current(self):
         root, path = checked_path(self.root, self.path)
-        if root != self.root or path != self.path or path.read_bytes() != self.raw:
+        with path.open('rb') as handle:
+            current = handle.read(MAX_BYTES + 1)
+        if root != self.root or path != self.path or current != self.raw:
             raise ValueError('文件已被 IDE 或其他程序修改；未写入。请重新载入并核对修改')
         if not (path.stat().st_mode & stat.S_IWRITE):
             raise ValueError('源码文件为只读，请在工程中解除只读后重新载入')

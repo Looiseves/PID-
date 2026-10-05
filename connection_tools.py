@@ -2,6 +2,7 @@
 from collections import deque
 import json
 import time
+import uuid
 from pathlib import Path
 
 from PySide6 import QtCore, QtWidgets
@@ -71,9 +72,21 @@ class ConnectionPresets:
             backup.write_bytes(self.path.read_bytes())
             self.warning = ''
         # A single explicit file; no automatic connection or command replay.
-        temp = self.path.with_suffix('.json.new')
-        temp.write_text(json.dumps({'schema': 1, 'profiles': profiles, 'last': last}, ensure_ascii=False, indent=2), encoding='utf-8')
-        temp.replace(self.path)
+        temp = self.path.with_name(self.path.name + '.' + uuid.uuid4().hex + '.tmp')
+        try:
+            temp.write_text(json.dumps({'schema': 1, 'profiles': profiles, 'last': last}, ensure_ascii=False, indent=2), encoding='utf-8')
+            for attempt, delay in enumerate((0, .02, .06, .15)):
+                if delay:
+                    time.sleep(delay)
+                try:
+                    temp.replace(self.path)
+                    break
+                except PermissionError as error:
+                    if getattr(error, 'winerror', None) not in (5, 32) or attempt == 3:
+                        raise
+        finally:
+            if temp.exists():
+                temp.unlink()  # One explicit temporary file, never a folder or batch.
         self.profiles, self.last = profiles, last
 
     def save(self, name, settings):

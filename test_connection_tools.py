@@ -74,6 +74,36 @@ class ConnectionToolsTests(unittest.TestCase):
         self.assertEqual(store.path.read_bytes(), before)
         self.assertNotIn('未写入', store.profiles)
 
+    def test_transient_windows_replace_failure_recovers_with_bounded_attempts(self):
+        store = ConnectionPresets(self.directory())
+        original_replace = Path.replace
+        attempts = []
+        def replace(path, target):
+            attempts.append(1)
+            if len(attempts) < 3:
+                error = PermissionError('temporarily locked')
+                error.winerror = 32
+                raise error
+            return original_replace(path,target)
+        with patch.object(Path,'replace',replace):
+            store.save('已恢复',SERIAL)
+        self.assertEqual(len(attempts),3)
+        self.assertEqual(ConnectionPresets(store.path.parent).profiles['已恢复']['port'],'COM7')
+
+    def test_permanent_windows_replace_failure_preserves_previous_settings(self):
+        store = ConnectionPresets(self.directory())
+        store.save('原设置',SERIAL)
+        before = store.path.read_bytes()
+        error = PermissionError('still locked')
+        error.winerror = 5
+        with patch.object(Path,'replace',side_effect=error) as replace:
+            with self.assertRaises(PermissionError):
+                store.save('不能保存',SERIAL)
+        self.assertEqual(replace.call_count,4)
+        self.assertEqual(store.path.read_bytes(),before)
+        self.assertEqual(list(store.profiles),['原设置'])
+        self.assertEqual(list(store.path.parent.glob('*.tmp')),[])
+
     def test_trace_tracks_actual_bytes_and_escaped_text(self):
         now = [10.0]
         trace = CommunicationTrace(lambda: now[0])

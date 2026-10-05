@@ -6,6 +6,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from source_sync import SourceFile, digest_text, replace_gains, scan_candidates
 from ui_components import CodeEditor, DiffEditor, section_header
+from source_edit_tools import FindReplaceDialog, ProjectFilesDialog, replace_draft
 
 
 class ReviewDialog(QtWidgets.QDialog):
@@ -56,6 +57,9 @@ class SourcePanel(QtWidgets.QWidget):
         super().__init__(window)
         self.window, self.root, self.source = window, None, None
         self.scanned_digest = None
+        self.external_change = False
+        self.watcher = QtCore.QFileSystemWatcher(self)
+        self.watcher.fileChanged.connect(self.disk_changed)
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
@@ -68,7 +72,16 @@ class SourcePanel(QtWidgets.QWidget):
         demo = QtWidgets.QPushButton('体验源码写回 · 独立示例')
         demo.setToolTip('在用户数据目录创建独立示例，不修改小车工程')
         demo.clicked.connect(self.open_demo)
-        layout.addWidget(demo)
+        edit_actions = QtWidgets.QHBoxLayout()
+        edit_actions.addWidget(demo,1)
+        browse = QtWidgets.QPushButton('工程文件')
+        browse.clicked.connect(self.browse_project)
+        edit_actions.addWidget(browse)
+        find = QtWidgets.QPushButton('查找')
+        find.setToolTip('Ctrl+F 查找 · Ctrl+H 替换 · F3 下一处')
+        find.clicked.connect(self.open_find)
+        edit_actions.addWidget(find)
+        layout.addLayout(edit_actions)
         self.file_title = QtWidgets.QLabel('未打开源码')
         self.file_title.setProperty('role', 'filename')
         layout.addWidget(self.file_title)
@@ -81,7 +94,14 @@ class SourcePanel(QtWidgets.QWidget):
         hint.setWordWrap(True)
         hint.setProperty('muted', True)
         layout.addWidget(hint)
+        self.external_notice = QtWidgets.QLabel()
+        self.external_notice.setWordWrap(True)
+        self.external_notice.setProperty('tone','warning')
+        self.external_notice.hide()
+        layout.addWidget(self.external_notice)
         self.editor = CodeEditor()
+        self.find_dialog = None
+        self.editor.installEventFilter(self)
         self.editor.setReadOnly(True)
         self.editor.setPlaceholderText('打开源码后，可在这里修改代码；保存前会展示差异。')
         self.editor.textChanged.connect(self.changed)
@@ -124,6 +144,69 @@ class SourcePanel(QtWidgets.QWidget):
     def dirty(self):
         return self.source is not None and self.editor.toPlainText() != self.source.text
 
+    def eventFilter(self, obj, event):
+        if obj is self.editor and event.type() in (QtCore.QEvent.Type.ShortcutOverride, QtCore.QEvent.Type.KeyPress):
+            control = bool(event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier)
+            key = event.key()
+            handled = control and key in (QtCore.Qt.Key.Key_F, QtCore.Qt.Key.Key_H, QtCore.Qt.Key.Key_S) or key == QtCore.Qt.Key.Key_F3
+            if handled:
+                if event.type() == QtCore.QEvent.Type.ShortcutOverride:
+                    event.accept()
+                    return True
+                if control and key == QtCore.Qt.Key.Key_S:
+                    self.preview()
+                elif key == QtCore.Qt.Key.Key_F3:
+                    self.open_find()
+                    self.find_dialog.find_next(bool(event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier))
+                else:
+                    self.open_find(replace=key == QtCore.Qt.Key.Key_H)
+                return True
+        return super().eventFilter(obj,event)
+
+    def disk_changed(self, path):
+        if not self.source or str(self.source.path) != path:
+            return
+        try:
+            self.source.check_current()
+        except (OSError,ValueError) as error:
+            self.external_change = True
+            self.external_notice.setText('检测到磁盘文件变化 · 当前草稿保留\n' + str(error))
+            self.external_notice.show()
+            self.fill_button.setEnabled(False)
+        if self.source.path.exists() and path not in self.watcher.files():
+            self.watcher.addPath(path)
+
+    def watch_source(self):
+        for path in self.watcher.files():
+            self.watcher.removePath(path)
+        self.external_change = False
+        self.external_notice.hide()
+        if self.source:
+            self.watcher.addPath(str(self.source.path))
+
+    def open_find(self, replace=False):
+        if not self.find_dialog:
+            self.find_dialog = FindReplaceDialog(self)
+        selected = self.editor.textCursor().selectedText()
+        if selected and len(selected) <= 128 and '\u2029' not in selected:
+            self.find_dialog.query.setText(selected)
+        self.find_dialog.refresh()
+        self.find_dialog.show()
+        self.find_dialog.raise_()
+        self.find_dialog.activateWindow()
+        (self.find_dialog.replacement if replace else self.find_dialog.query).setFocus()
+
+    def browse_project(self):
+        if not self.root:
+            self.message.setText('请先打开工程文件夹')
+            return
+        dialog = ProjectFilesDialog(self.root,self)
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            try:
+                self.load_file(dialog.selected)
+            except Exception as error:
+                self.message.setText(str(error))
+
     def can_discard(self):
         if not self.dirty():
             return True
@@ -139,6 +222,7 @@ class SourcePanel(QtWidgets.QWidget):
         if not root.is_dir():
             raise ValueError('请选择工程文件夹')
         self.root, self.source = root, None
+        self.watch_source()
         self.file_title.setText('未打开源码')
         self.editor.clear()
         self.editor.setReadOnly(True)
@@ -197,6 +281,7 @@ class SourcePanel(QtWidgets.QWidget):
         if not force and not self.can_discard():
             return False
         self.source = source
+        self.watch_source()
         self.file_title.setText(source.path.name)
         self.editor.setReadOnly(False)
         self.editor.setPlainText(source.text)
@@ -217,7 +302,7 @@ class SourcePanel(QtWidgets.QWidget):
     def changed(self):
         self.save_button.setEnabled(self.dirty())
         self.scan_button.setEnabled(self.source is not None)
-        self.fill_button.setEnabled(self.source is not None and self.scanned_digest == digest_text(self.editor.toPlainText()))
+        self.fill_button.setEnabled(self.source is not None and not self.external_change and self.scanned_digest == digest_text(self.editor.toPlainText()))
         if self.source:
             self.message.setText('草稿有修改 · 尚未保存到工程' if self.dirty() else '源码与载入时一致 · 未编译 / 烧录')
 
@@ -234,11 +319,13 @@ class SourcePanel(QtWidgets.QWidget):
                 if unique and item.identity == old.identity:
                     combo.setCurrentIndex(combo.count() - 1)
         self.scanned_digest = digest_text(text)
-        self.fill_button.setEnabled(self.source is not None)
+        self.fill_button.setEnabled(self.source is not None and not self.external_change)
 
     def fill(self):
         try:
             text = self.editor.toPlainText()
+            if self.external_change:
+                raise ValueError('磁盘文件已变化，请重新载入并核对草稿后再填入 PID')
             if self.source is None or digest_text(text) != self.scanned_digest:
                 raise ValueError('请先重新识别数值位置并核对绑定')
             bindings = {key: combo.currentData() for key, combo in self.bindings.items()}
@@ -251,7 +338,7 @@ class SourcePanel(QtWidgets.QWidget):
                 gains = dict(session.actual)
             else:
                 gains = {key: self.window.spins[key].value() for key in self.bindings}
-            self.editor.setPlainText(replace_gains(text, bindings, gains))
+            replace_draft(self.editor, replace_gains(text, bindings, gains))
             self.scan()
             values = ' / '.join(f'{key.upper()} {gains[key]:g}' for key in self.bindings)
             self.message.setText(self.value_source.currentText() + '已填入草稿：' + values + '\n点击“预览修改并保存到工程”后才写入源码。')
