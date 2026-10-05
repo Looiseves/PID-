@@ -46,7 +46,10 @@ def run_live(app, w, folder, check):
         check("cancelled_edit_keeps_readback_active_without_write", not w.live_dirty and w.worker.applied_count == count + 1)
         check("live_parser_updates_runtime_statistics", "无效帧" in w.stats.text() and "虚拟板端" in w.stats.text())
         from workspace_ui import stage_proposal
-        w.pending_proposal = {"parameters": {"kp": 1.7}}
+        from integration import write_proposal
+        w.publish_bridge()
+        write_proposal(w.bridge.directory,{"kp":1.7},"保持其他参数不变，比较波动")
+        w.pending_proposal = w.bridge.take_proposal()
         stage_proposal(w)
         QTest.qWait(650)
         app.processEvents()

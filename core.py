@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import mean
 
-VERSION = "0.9.0"
+VERSION = "0.10.0"
 CHANNELS = ["target", "actual", "error", "output", "p_term", "i_term", "d_term"]
 LABELS = dict(zip(CHANNELS, ["目标值", "实际值", "误差", "控制输出", "P 分量", "I 分量", "D 分量"]))
 SCENARIOS = ["正常跟踪", "响应迟缓", "振荡与延迟", "执行端饱和"]
@@ -219,4 +219,5 @@ def analyze(experiment):
     if experiment.evicted:
         findings.append(f"当前记录只保留最近 {len(samples)} 个样本，已移出 {experiment.evicted} 个旧样本。")
     return {"ready": True, "metrics": metrics, "findings": findings,
+            "analysis_window": {"start_time": window[0]["time"], "end_time": window[-1]["time"], "sample_count": len(window)},
             "suggestions": suggestions, "summary": "基于当前记录的实验建议 · 不自动写入参数"}

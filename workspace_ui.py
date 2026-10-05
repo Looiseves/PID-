@@ -1,6 +1,7 @@
 """Instrument-style Qt workspace with dockable panels and three perspectives."""
 from __future__ import annotations
 
+import copy
 import json
 import os
 import sys
@@ -12,7 +13,7 @@ import pyqtgraph as pg
 
 from core import CHANNELS, SCENARIOS, VERSION
 from ui_fonts import UI_FAMILY, NUMBER_FAMILY, configure_typography, number_font
-from integration import (SecretStore, api_context, api_endpoint, atomic_json, codex_config_text,
+from integration import (SecretStore, analysis_identity, proposal_current, api_context, api_endpoint, atomic_json, codex_config_text,
                          data_directory, install_codex_config, request_analysis)
 from ui_components import DockHeader, ElidedLabel, section_header
 
@@ -123,7 +124,7 @@ class ApiWorker(QtCore.QThread):
 
     def __init__(self, settings, key, context, question, parent):
         super().__init__(parent)
-        self.settings, self.key, self.context, self.question = settings.copy(), key, context, question
+        self.settings, self.key, self.context, self.question = settings.copy(), key, copy.deepcopy(context), question
 
     def run(self):
         try:
@@ -522,6 +523,8 @@ def build_workspace(w):
     w.ai_question.setPlaceholderText("例如：左右摆动可能是什么原因？")
     ai.addWidget(w.ai_question)
     w.ai_button = push("发送当前实验给模型", lambda: start_api_analysis(w), True)
+    w.ai_preview = push("查看发送内容…", lambda: preview_analysis(w))
+    ai.addWidget(w.ai_preview)
     ai.addWidget(w.ai_button)
     w.ai_status = QtWidgets.QLabel("只在点击后发送实验数据。")
     w.ai_status.setWordWrap(True)
@@ -713,6 +716,7 @@ def start_api_analysis(w):
     if not context["rule_analysis"]["ready"]:
         w.ai_status.setText(context["rule_analysis"]["summary"])
         return
+    w.api_reference = (w.experiment, analysis_identity(w.experiment))
     w.ai_button.setEnabled(False)
     w.ai_status.setText("分析中…发送点击时刻的实验快照，采集继续。")
     w.ai_result.setPlainText("")
@@ -721,21 +725,30 @@ def start_api_analysis(w):
     w.analysis_dock.raise_()
     worker = ApiWorker(w.model_settings, w.api_key, context, w.ai_question.text().strip() or "分析现象并提出下一次验证实验。", w)
     w.api_worker = worker
-    worker.result.connect(lambda text, usage: api_result(w, text, usage))
+    worker.result.connect(lambda text, usage: api_result(w, text, usage, worker))
     worker.failed.connect(lambda message: w.ai_status.setText(message))
     worker.finished.connect(lambda: w.ai_button.setEnabled(True))
     worker.start()
 
 
-def api_result(w, text, usage):
+def api_result(w, text, usage, worker=None):
     w.ai_result.setPlainText(text)
     count = usage.get("total_tokens")
-    w.ai_status.setText("模型建议已返回；未应用参数。" + (f" 本次 {count} tokens。" if count else ""))
-    w.log("模型分析完成；模型 " + w.model_settings["model"] + "，未应用参数。")
+    reference = getattr(w,"api_reference",None)
+    w.experiment.note = w.note.toPlainText()
+    stale = reference and (reference[0] is not w.experiment or reference[1] != analysis_identity(w.experiment))
+    status = "模型建议已返回；未应用参数。" if not stale else "这份建议依据旧实验：参数或工况已变化，请重新分析。"
+    w.ai_status.setText(status + (f" 本次 {count} tokens。" if count else ""))
+    w.log("模型分析完成；模型 " + (worker.settings["model"] if worker else w.model_settings["model"]) + "，未应用参数。")
 
 
 def stage_proposal(w):
     if not w.pending_proposal:
+        return
+    if not proposal_current(w.pending_proposal,w.bridge,w.experiment):
+        w.proposal_label.setText("Codex 建议已过期：参数、实验或工况已变化，请重新分析。")
+        w.review_proposal.setEnabled(False)
+        w.pending_proposal = None
         return
     from live_tuning import pause_auto
     pause_auto(w)
@@ -745,3 +758,27 @@ def stage_proposal(w):
     w.parameter_label.setText("已填入 Codex 建议，实时应用已暂停；点击应用后才会修改参数。")
     w.review_proposal.setEnabled(False)
     w.proposal_label.setText("建议已填入参数栏，尚未应用。")
+
+
+def preview_analysis(w):
+    w.experiment.note = w.note.toPlainText()
+    context = api_context(w.experiment,w.source,w.baseline)
+    dialog = QtWidgets.QDialog(w)
+    dialog.setWindowTitle('模型分析 · 发送内容预览')
+    dialog.resize(760,600)
+    layout = QtWidgets.QVBoxLayout(dialog)
+    layout.setContentsMargins(24,22,24,20)
+    layout.addWidget(section_header('分析范围', f"保留 {context['retained_sample_count']:,} 样本 · 分析 {context['analyzed_sample_count']:,} 样本 · 发送 {len(context['samples_decimated_for_model'])} 点"))
+    label = QtWidgets.QLabel('只使用最后目标与参数不变的区间；下面是实验内容，预览不会发起请求。'+context['rule_analysis']['summary'])
+    label.setWordWrap(True)
+    layout.addWidget(label)
+    text = QtWidgets.QPlainTextEdit(json.dumps(context,ensure_ascii=False,indent=2))
+    text.setReadOnly(True)
+    layout.addWidget(text,1)
+    close = QtWidgets.QPushButton('关闭')
+    close.clicked.connect(dialog.close)
+    layout.addWidget(close)
+    dialog.context_text = text
+    w.analysis_preview = dialog
+    dialog.show()
+    return dialog

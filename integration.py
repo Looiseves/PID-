@@ -1,6 +1,7 @@
 """Local experiment bridge, secret storage and an explicit API request path."""
 from __future__ import annotations
 
+import copy
 import ctypes
 import json
 import math
@@ -114,27 +115,51 @@ def write_proposal(directory, parameters, reason):
     proposal = {"id": uuid.uuid4().hex, "session_id": snapshot["session_id"],
                 "experiment_id": snapshot["experiment_id"],
                 "created_at": time.time(), "parameters": parameters, "reason": reason,
-                "reference_parameters": snapshot["experiment"]["parameters"]}
+                "reference_parameters": snapshot["experiment"]["parameters"],
+                "reference_scenario": snapshot["experiment"]["scenario"], "reference_source": snapshot["experiment"]["source"]}
     atomic_json(Path(directory) / "proposal.json", proposal)
     return {"status": "pending_user_review", "proposal_id": proposal["id"],
             "message": "建议已送到桌面软件；没有应用参数，也没有向设备发送命令。"}
 
 
 def api_context(experiment, source, baseline=None):
-    rows = list(experiment.samples)
+    retained = list(experiment.samples)
+    analysis = analyze(experiment)
+    window = analysis.get("analysis_window")
+    rows = [row for row in retained if window and window["start_time"] <= row["time"] <= window["end_time"]]
     stride = max(1, math.ceil(len(rows) / 256))
     sampled = rows[::stride]
     if rows and sampled[-1] is not rows[-1]:
         sampled.append(rows[-1])
     result = {"source": source, "scenario": experiment.scenario, "parameters": experiment.params,
               "time_basis": "simulated" if experiment.source == "模拟设备" else "host_receive",
-              "retained_sample_count": len(rows), "samples_decimated_for_model": sampled,
+              "retained_sample_count": len(retained), "analyzed_sample_count": len(rows),
+              "sample_scope": "latest_unchanged_target_and_parameters_segment", "samples_decimated_for_model": sampled,
               "parameter_events": experiment.events[-20:], "note": experiment.note[:2000],
-              "rule_analysis": analyze(experiment)}
+              "rule_analysis": analysis}
     if baseline:
         result["baseline"] = {"parameters": baseline.params, "scenario": baseline.scenario,
                               "source": baseline.source, "analysis": analyze(baseline)}
-    return result
+    return copy.deepcopy(result)
+
+
+def analysis_identity(experiment):
+    return copy.deepcopy({"parameters": experiment.params, "source": experiment.source,
+                          "scenario": experiment.scenario, "last_event": experiment.events[-1:],
+                          "target": experiment.samples[-1].get("target") if experiment.samples else None,
+                          "note": experiment.note[:2000]})
+
+
+def proposal_current(proposal, bridge, experiment):
+    try:
+        age = time.time()-float(proposal["created_at"])
+        return (-5 <= age <= 300 and proposal["session_id"] == bridge.session_id
+                and proposal["experiment_id"] == getattr(experiment,"_bridge_id",None)
+                and proposal["reference_parameters"] == experiment.params
+                and proposal["reference_source"] == experiment.source
+                and proposal["reference_scenario"] == experiment.scenario)
+    except (KeyError,TypeError,ValueError):
+        return False
 
 
 SYSTEM_PROMPT = """你是 PID 实验分析助手。只依据提供的数据。明确区分观测、可能原因、下一次可验证实验。

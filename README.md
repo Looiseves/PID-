@@ -4,13 +4,13 @@
 
 一款 Windows 原生桌面工具，把实时波形、PID 参数、数据看板和实验分析放进同一个工作台。双击 EXE 即可体验，无需安装 Python；默认使用模拟设备，不需要 API Key。
 
-[下载 Windows 版 v0.9.0](https://github.com/Looiseves/PID-/releases/tag/v0.9.0) · [使用说明](docs/USER_GUIDE.md) · [界面图集](docs/UI_GALLERY.md) · [版本记录](CHANGELOG.md)
+[下载 Windows 版 v0.10.0](https://github.com/Looiseves/PID-/releases/tag/v0.10.0) · [使用说明](docs/USER_GUIDE.md) · [界面图集](docs/UI_GALLERY.md) · [版本记录](CHANGELOG.md)
 
 ![实时波形工作台](docs/images/waveform.png)
 
 *大波形区与独立信号列表。截图为本地模拟数据。*
 
-v0.9.0 加入实验时间区间对比：拖动选区，同步查看指标变化和变化率，并导出带观察依据的 CSV。来源、目标或参数历史不一致时提示核对；全部工作区截图见[界面图集](docs/UI_GALLERY.md)。
+v0.10.0 对齐模型与规则分析的数据范围，新增发送内容预览、旧实验结果提醒和 Codex 建议填入前的再次核对。保留实验区间对比、源码编辑和通信诊断；全部工作区截图见[界面图集](docs/UI_GALLERY.md)。
 
 ## 主要功能
 
