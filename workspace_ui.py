@@ -235,10 +235,10 @@ def build_workspace(w):
     bar.addWidget(push("连接设备…", w.configure_connection))
     bar.addWidget(push("返回模拟", w.return_to_simulator))
     bar.addSeparator()
-    bar.addWidget(QtWidgets.QLabel("工作区 "))
     w.layout_selector = QtWidgets.QComboBox()
     w.layout_selector.addItems(["示波器", "调参", "实验对比"])
-    bar.addWidget(w.layout_selector)
+    w.layout_selector.setParent(w)
+    w.layout_selector.hide()
     w.layout_selector.currentTextChanged.connect(lambda name: apply_layout(w, name))
     bar.addWidget(push("波形专注  F11", lambda: toggle_focus(w)))
     bar.addSeparator()
@@ -479,6 +479,9 @@ def build_workspace(w):
     settings.addAction("模型与 Codex 接入…", lambda: ModelSettingsDialog(w).exec())
     help_menu = w.menuBar().addMenu("帮助")
     help_menu.addAction("使用说明", w.show_help)
+    from dashboard_nav import DashboardNavigation
+    w.navigation = DashboardNavigation(w, bar)
+    view.addAction("快速跳转（Ctrl+K）", w.navigation.palette.toggle)
     apply_theme(w, w.theme_name)
     apply_layout(w, "示波器")
 
@@ -513,6 +516,8 @@ def apply_layout(w, name):
         w.resizeDocks([w.analysis_dock], [320], QtCore.Qt.Orientation.Horizontal)
     with QtCore.QSignalBlocker(w.layout_selector):
         w.layout_selector.setCurrentText(name)
+    if hasattr(w, "navigation"):
+        w.navigation.sync_layout(name)
 
 
 def apply_theme(w, name):
@@ -553,6 +558,8 @@ def toggle_focus(w):
     else:
         w.restoreState(w.focus_state)
         w.focused_plot = False
+    if hasattr(w, "navigation"):
+        w.navigation.focus_mode(w.focused_plot)
 
 
 def inspect_cursor(w, position):
@@ -579,7 +586,8 @@ def inspect_cursor(w, position):
 
 def save_perspective(w):
     atomic_json(w.data_dir / "workspace.json", {"state": bytes(w.saveState()).hex(),
-                "geometry": bytes(w.saveGeometry()).hex(), "theme": w.theme_name, "layout": w.layout_name})
+                "geometry": bytes(w.saveGeometry()).hex(), "theme": w.theme_name, "layout": w.layout_name,
+                "navigation": w.navigation.mode})
     w.statusBar().showMessage("当前布局已保存", 3500)
 
 
@@ -591,6 +599,7 @@ def restore_perspective(w):
             raise ValueError("布局格式无效")
         w.restoreGeometry(QtCore.QByteArray.fromHex(obj["geometry"].encode()))
         w.theme_selector.setCurrentText(obj["theme"])
+        w.navigation.mode_selector.setCurrentText(obj.get("navigation", "顶部导航"))
         w.statusBar().showMessage("已恢复保存的布局", 3500)
     except (OSError, ValueError, KeyError):
         w.statusBar().showMessage("尚无有效的已保存布局", 3500)
