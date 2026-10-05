@@ -592,13 +592,13 @@ class DashboardNavigation(QtCore.QObject):
         window.insertToolBar(action_bar, self.top_toolbar)
         window.insertToolBarBreak(action_bar)
         self.header = HighlightSurface()
-        self.header.setMinimumHeight(48)
+        self.header.setMinimumHeight(42)
         self.header.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
         layout = QtWidgets.QHBoxLayout(self.header)
         layout.setContentsMargins(13, 2, 10, 2)
         layout.setSpacing(8)
-        brand = QtWidgets.QLabel("PID / LAB")
-        brand.setStyleSheet("font-size:15px;font-weight:600;padding-right:22px;")
+        brand = QtWidgets.QLabel("PID LAB")
+        brand.setStyleSheet("font-family:'Inter';font-size:15px;font-weight:600;padding-right:22px;")
         layout.addWidget(brand)
         self.headings = {}
         for group in GROUPS:
@@ -755,7 +755,7 @@ class DashboardNavigation(QtCore.QObject):
             w.monitor_dock.hide()
             w.source_dock.show()
             w.source_dock.raise_()
-            w.resizeDocks([w.control_dock, w.source_dock], [285, 500], QtCore.Qt.Orientation.Horizontal)
+            w.resizeDocks([w.control_dock, w.source_dock], [310, 500], QtCore.Qt.Orientation.Horizontal)
         elif key == "comparison":
             apply_layout(w, "实验对比")
         elif key == "records":

@@ -81,12 +81,10 @@ def run_smoke(app, window, folder):
         check("pause_display_keeps_curve_frozen", list(window.curves["actual"].getData()[0]) == before_x)
         click(window.pause_button)
         check("resume_display", not window.display_paused)
-        with patch.object(QtWidgets.QInputDialog, "getText", side_effect=[("积分项观察", True), ("", True)]), \
-             patch.object(QtWidgets.QInputDialog, "getItem", return_value=("i_term", True)):
+        with patch.object(window, "card_dialog", return_value=("积分项观察", "i_term", "")):
             window.add_card()
         check("add_custom_card", len(window.card_definitions) == 5 and window.card_definitions[-1][1] == "i_term")
-        with patch.object(QtWidgets.QInputDialog, "getText", side_effect=[("自定义积分", True), ("a.u.", True)]), \
-             patch.object(QtWidgets.QInputDialog, "getItem", return_value=("i_term", True)):
+        with patch.object(window, "card_dialog", return_value=("自定义积分", "i_term", "a.u.")):
             window.edit_card(4)
         check("rename_custom_card_and_unit", window.card_definitions[-1] == ("自定义积分", "i_term", "a.u."))
         window.choose_file = lambda title, save=True, extension="json": str(folder / ("dashboard.json" if "看板" in title else "experiment." + extension))
@@ -238,6 +236,8 @@ def run_smoke(app, window, folder):
         run_typography(app, window, folder, check)
         from smoke_source import run_source
         run_source(app, window, folder, check)
+        from smoke_polish import run_polish
+        run_polish(app, window, folder, check)
         (folder / "smoke-result.json").write_text(json.dumps({"passed": True, "checks": checks}, ensure_ascii=False, indent=2), encoding="utf-8")
         window.close()
         app.exit(0)

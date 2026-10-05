@@ -14,32 +14,60 @@ from core import CHANNELS, SCENARIOS, VERSION
 from ui_fonts import UI_FAMILY, NUMBER_FAMILY, configure_typography, number_font
 from integration import (SecretStore, api_context, api_endpoint, atomic_json, codex_config_text,
                          data_directory, install_codex_config, request_analysis)
+from ui_components import DockHeader, ElidedLabel, section_header
 
 PALETTES = {
-    "深色仪器": {"bg": "#23262c", "panel": "#2b2f36", "field": "#1c2026", "border": "#424751",
-                 "text": "#d8dde6", "muted": "#929ca9", "accent": "#529bd5", "plot": "#14171d"},
-    "浅色工作台": {"bg": "#e8e9eb", "panel": "#f4f4f5", "field": "#ffffff", "border": "#c7cbd0",
-                   "text": "#303640", "muted": "#69727d", "accent": "#276a9d", "plot": "#fafafa"},
+    "深色仪器": {"bg": "#141b24", "panel": "#1c2531", "field": "#111923", "border": "#2c394a",
+                 "text": "#dde5ef", "muted": "#93a2b5", "accent": "#7cadd9", "plot": "#101720"},
+    "浅色工作台": {"bg": "#edf1f6", "panel": "#ffffff", "field": "#f7f9fc", "border": "#d9e2ec",
+                   "text": "#223448", "muted": "#63778e", "accent": "#35699d", "plot": "#fafafa"},
 }
 
 
 def theme_styles(name):
     p = PALETTES[name]
+    primary_text = "#112438" if name == "深色仪器" else "#ffffff"
+    error_text = "#e1a0a3" if name == "深色仪器" else "#b04a4a"
+    root = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+    icons = (root / 'assets/ui').as_posix()
+    mode = 'dark' if name == '深色仪器' else 'light'
     return f"""
 QWidget {{font-family:'{UI_FAMILY}','Segoe UI';font-size:13px;color:{p['text']};}}
 QMainWindow,QDialog,QWidget#dockContent {{background:{p['bg']};}}
 QDockWidget {{font-weight:600;}}
-QDockWidget::title {{background:{p['panel']};padding:5px 8px;border-bottom:1px solid {p['border']};}}
+QWidget#panelHeader {{background:{p['bg']};border-bottom:1px solid {p['border']};}}
+QLabel[role="heading"] {{font-size:20px;font-weight:600;}}
+QLabel[role="section"] {{font-size:13px;font-weight:600;}}
+QLabel[role="filename"] {{font-size:15px;font-weight:600;}}
+QLabel[tone="error"] {{color:{error_text};}}
 QMenuBar,QMenu,QToolBar,QStatusBar {{background:{p['panel']};color:{p['text']};}}
-QToolBar {{spacing:5px;padding:4px;border-bottom:1px solid {p['border']};}}
+QToolBar {{spacing:7px;padding:3px 8px;border:0;border-bottom:1px solid {p['border']};}}
+QToolBar::separator {{background:{p['border']};width:1px;margin:7px 5px;}}
+QToolBar QPushButton,QToolBar QComboBox {{padding:4px 8px;}}
+QMenu {{border:1px solid {p['border']};padding:5px;}}
+QMenu::item {{padding:7px 24px 7px 10px;border-radius:4px;}}
+QMenuBar::item {{padding:5px 9px;}}
 QMenu::item:selected,QMenuBar::item:selected {{background:{p['border']};}}
-QPushButton,QToolButton {{background:{p['panel']};border:1px solid {p['border']};border-radius:2px;padding:5px 8px;}}
+QPushButton,QToolButton {{background:{p['panel']};border:1px solid {p['border']};border-radius:6px;padding:6px 9px;}}
+QPushButton:pressed,QToolButton:pressed {{background:{p['field']};}}
 QPushButton:hover,QToolButton:hover {{border-color:{p['accent']};}}
 QPushButton:disabled,QToolButton:disabled {{color:{p['muted']};}}
-QPushButton[primary="true"] {{background:{p['accent']};color:white;border-color:{p['accent']};}}
-QGroupBox {{border:1px solid {p['border']};margin-top:12px;padding:12px 8px 8px;font-weight:500;}}
-QGroupBox::title {{subcontrol-origin:margin;left:8px;padding:0 4px;}}
-QLineEdit,QComboBox,QSpinBox,QDoubleSpinBox,QPlainTextEdit,QTextBrowser {{background:{p['field']};color:{p['text']};border:1px solid {p['border']};border-radius:2px;padding:4px;selection-background-color:{p['accent']};}}
+QPushButton[primary="true"] {{background:{p['accent']};color:{primary_text};border-color:{p['accent']};font-weight:600;}}
+QPushButton[primary="true"]:disabled {{background:{p['panel']};color:{p['muted']};border-color:{p['border']};}}
+QToolButton[quiet="true"] {{background:transparent;border:0;padding:2px;border-radius:4px;}}
+QToolButton[quiet="true"]:hover {{background:{p['border']};}}
+QGroupBox {{background:{p['panel']};border:1px solid {p['border']};border-radius:8px;margin-top:14px;padding:14px 8px 8px;font-weight:500;}}
+QGroupBox::title {{subcontrol-origin:margin;left:12px;padding:0 5px;color:{p['muted']};}}
+QLineEdit,QComboBox,QSpinBox,QDoubleSpinBox,QPlainTextEdit,QTextBrowser {{background:{p['field']};color:{p['text']};border:1px solid {p['border']};border-radius:6px;padding:6px;selection-background-color:{p['accent']};}}
+QLineEdit:focus,QComboBox:focus,QSpinBox:focus,QDoubleSpinBox:focus,QPlainTextEdit:focus,QTextBrowser:focus {{border-color:{p['accent']};}}
+QLineEdit:disabled,QComboBox:disabled,QSpinBox:disabled,QDoubleSpinBox:disabled {{color:{p['muted']};background:{p['bg']};}}
+QComboBox::drop-down {{border:0;width:22px;}}
+QComboBox::down-arrow {{image:url("{icons}/{mode}-down.svg");width:12px;height:12px;}}
+QSpinBox::up-button,QDoubleSpinBox::up-button,QSpinBox::down-button,QDoubleSpinBox::down-button {{width:19px;border:0;}}
+QSpinBox::up-arrow,QDoubleSpinBox::up-arrow {{image:url("{icons}/{mode}-up.svg");width:11px;height:11px;}}
+QSpinBox::down-arrow,QDoubleSpinBox::down-arrow {{image:url("{icons}/{mode}-down.svg");width:11px;height:11px;}}
+QPlainTextEdit#codeEditor,QPlainTextEdit#diffEditor,QPlainTextEdit#eventLog {{font-family:'Consolas','{UI_FAMILY}';font-size:13px;}}
+QPlainTextEdit#eventLog {{color:{p['muted']};}}
 QComboBox QAbstractItemView {{background:{p['field']};color:{p['text']};selection-background-color:{p['accent']};}}
 QTabWidget::pane {{border:0;}}
 QTabBar::tab {{background:{p['panel']};padding:7px 15px;border-bottom:2px solid transparent;}}
@@ -49,13 +77,26 @@ QScrollArea {{border:0;background:transparent;}}
 QWidget#channelPanel,QWidget#channelViewport {{background:{p['bg']};}}
 QLabel[muted="true"] {{color:{p['muted']};}}
 QFrame[card="true"] {{background:{p['panel']};border:1px solid {p['border']};}}
-QLabel[value="true"] {{font-family:'{NUMBER_FAMILY}';font-size:21px;font-weight:500;color:{p['text']};}}
+QLabel[value="true"] {{font-family:'{NUMBER_FAMILY}';font-size:26px;font-weight:500;color:{p['text']};}}
+QFrame[card="true"] {{border-radius:8px;}}
 QSpinBox,QDoubleSpinBox {{font-family:'{NUMBER_FAMILY}','{UI_FAMILY}';}}
-QTableWidget {{background:{p['field']};alternate-background-color:{p['panel']};gridline-color:{p['border']};border:0;}}
-QHeaderView::section {{background:{p['panel']};color:{p['text']};padding:5px;border:0;}}
-QSplitter::handle {{background:{p['border']};}}
-QMainWindow::separator {{background:{p['border']};width:4px;height:4px;}}
+QTableWidget {{background:{p['field']};alternate-background-color:{p['panel']};gridline-color:{p['border']};border:1px solid {p['border']};border-radius:6px;selection-background-color:{p['border']};}}
+QTableWidget::item {{padding:6px;}}
+QHeaderView::section {{background:{p['panel']};color:{p['muted']};padding:9px;border:0;border-bottom:1px solid {p['border']};font-weight:500;}}
+QSplitter::handle {{background:{p['bg']};height:7px;}}
+QMainWindow::separator {{background:{p['bg']};width:7px;height:7px;}}
 QCheckBox {{spacing:6px;}}
+QCheckBox::indicator {{width:14px;height:14px;border:1px solid {p['muted']};border-radius:4px;background:{p['field']};}}
+QCheckBox::indicator:checked {{background:{p['accent']};border-color:{p['accent']};image:url("{icons}/{mode}-check.svg");}}
+QCheckBox::indicator:disabled {{border-color:{p['border']};}}
+QScrollBar:vertical {{background:transparent;width:8px;margin:2px;}}
+QScrollBar:horizontal {{background:transparent;height:8px;margin:2px;}}
+QScrollBar::handle:vertical,QScrollBar::handle:horizontal {{background:{p['border']};border-radius:3px;min-height:24px;min-width:24px;}}
+QScrollBar::add-line,QScrollBar::sub-line {{width:0;height:0;}}
+QScrollBar::add-page,QScrollBar::sub-page {{background:transparent;}}
+QToolTip {{background:{p['panel']};color:{p['text']};border:1px solid {p['border']};padding:6px;}}
+QStatusBar {{font-size:11px;border-top:1px solid {p['border']};}}
+QStatusBar QLabel {{font-size:12px;}}
 """
 
 
@@ -98,12 +139,17 @@ class ModelSettingsDialog(QtWidgets.QDialog):
         super().__init__(window)
         self.window = window
         self.setWindowTitle("模型与 Codex 接入")
-        self.resize(680, 480)
+        self.resize(720, 585)
         outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(24, 22, 24, 20)
+        outer.setSpacing(12)
+        outer.addWidget(section_header("模型与 Codex", "选择 API 分析或本机 MCP，保持参数建议可审阅。"))
         tabs = QtWidgets.QTabWidget()
         outer.addWidget(tabs)
         api = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(api)
+        form.setContentsMargins(0, 16, 0, 6)
+        form.setVerticalSpacing(10)
         settings = window.model_settings
         self.base_url = QtWidgets.QLineEdit(settings.get("base_url", "https://api.openai.com/v1"))
         self.model = QtWidgets.QLineEdit(settings.get("model", ""))
@@ -137,6 +183,7 @@ class ModelSettingsDialog(QtWidgets.QDialog):
         layout.addWidget(label)
         command, args = mcp_command(window.data_dir)
         self.config = QtWidgets.QPlainTextEdit(codex_config_text(command, args))
+        self.config.setObjectName("eventLog")
         self.config.setReadOnly(True)
         layout.addWidget(self.config, 1)
         controls = QtWidgets.QHBoxLayout()
@@ -154,6 +201,7 @@ class ModelSettingsDialog(QtWidgets.QDialog):
         outer.addWidget(self.message)
         actions = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Save | QtWidgets.QDialogButtonBox.StandardButton.Cancel)
         actions.button(QtWidgets.QDialogButtonBox.StandardButton.Save).setText("保存")
+        actions.button(QtWidgets.QDialogButtonBox.StandardButton.Save).setProperty("primary", True)
         actions.button(QtWidgets.QDialogButtonBox.StandardButton.Cancel).setText("取消")
         actions.accepted.connect(self.save)
         actions.rejected.connect(self.reject)
@@ -206,6 +254,7 @@ def dock(window, title, name, content, area):
     widget.setObjectName(name)
     widget.setMinimumWidth(190)
     widget.setWidget(content)
+    widget.setTitleBarWidget(DockHeader(widget, title))
     window.addDockWidget(area, widget)
     return widget
 
@@ -258,14 +307,17 @@ def build_workspace(w):
     controls = QtWidgets.QWidget()
     controls.setObjectName("dockContent")
     c = QtWidgets.QVBoxLayout(controls)
-    c.setContentsMargins(8, 6, 8, 8)
-    c.setSpacing(7)
+    c.setContentsMargins(12, 10, 12, 12)
+    c.setSpacing(9)
     w.connection_label = QtWidgets.QLabel("模拟设备 · 200 Hz")
     w.connection_label.setWordWrap(True)
+    w.connection_label.setProperty('role', 'section')
     c.addWidget(w.connection_label)
     w.connect_button = push("连接硬件…", w.configure_connection)
     c.addWidget(w.connect_button)
-    c.addWidget(push("体验串口调参（虚拟板端）", w.start_live_demo))
+    demo_button = push("虚拟板端演示", w.start_live_demo)
+    demo_button.setToolTip("体验串口调参：独立虚拟板端，不打开真实串口")
+    c.addWidget(demo_button)
     w.scenario = QtWidgets.QComboBox()
     w.scenario.addItems(SCENARIOS)
     w.scenario.currentTextChanged.connect(w.change_scenario)
@@ -275,6 +327,8 @@ def build_workspace(w):
     c.addWidget(push("重新开始实验", w.restart))
     parameters = QtWidgets.QGroupBox("控制参数")
     form = QtWidgets.QFormLayout(parameters)
+    form.setVerticalSpacing(8)
+    form.setHorizontalSpacing(12)
     w.parameter_form = form
     w.spins = {}
     for key, label in [("kp", "P"), ("ki", "I"), ("kd", "D"), ("target", "目标值"), ("limit", "输出限幅")]:
@@ -309,6 +363,7 @@ def build_workspace(w):
     c.addWidget(hardware)
     c.addStretch()
     w.control_dock = dock(w, "设备与控制", "controlDock", scroll(controls), QtCore.Qt.DockWidgetArea.LeftDockWidgetArea)
+    w.control_dock.setMinimumWidth(310)
 
     channel_panel = QtWidgets.QWidget()
     channel_panel.setObjectName("channelPanel")
@@ -334,16 +389,16 @@ def build_workspace(w):
     w.history.setValue(15)
     w.history.setSuffix(" s")
     toolbar.addWidget(w.history)
-    w.banner = QtWidgets.QLabel("模拟设备 · 非真实小车")
+    w.banner = ElidedLabel("模拟设备 · 非真实小车")
     w.banner.setProperty("muted", True)
-    w.banner.setWordWrap(True)
+    w.banner.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, QtWidgets.QSizePolicy.Policy.Preferred)
     toolbar.addWidget(w.banner, 1)
     w.snapshot_button = push("设为基线", w.set_baseline)
     toolbar.addWidget(w.snapshot_button)
     v.addLayout(toolbar)
     pg.setConfigOptions(antialias=True, background="#14171d", foreground="#aeb8c8")
     w.plot = pg.PlotWidget()
-    w.plot.showGrid(x=True, y=True, alpha=.22)
+    w.plot.showGrid(x=True, y=True, alpha=.13)
     w.plot.setLabel("bottom", "时间", units="s")
     w.plot.setLabel("left", "通道值")
     w.plot.addLegend(offset=(12, 12), labelTextSize="11px")
@@ -377,6 +432,12 @@ def build_workspace(w):
     w.compare_table.setHorizontalHeaderLabels(["观测指标", "基线", "当前"])
     w.compare_table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
     w.compare_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+    w.compare_table.verticalHeader().hide()
+    w.compare_table.verticalHeader().setDefaultSectionSize(34)
+    w.compare_table.setShowGrid(False)
+    w.compare_table.setAlternatingRowColors(True)
+    w.compare_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+    w.compare_table.setMinimumHeight(175)
     split.addWidget(w.compare_table)
     split.setStretchFactor(0, 5)
     split.setStretchFactor(1, 1)
@@ -386,17 +447,24 @@ def build_workspace(w):
 
     records = QtWidgets.QWidget()
     r = QtWidgets.QVBoxLayout(records)
-    r.addWidget(QtWidgets.QLabel("实验备注"))
+    r.setContentsMargins(18, 16, 18, 16)
+    r.setSpacing(12)
+    r.addWidget(section_header("实验记录", "留下测试条件、参数与观察，便于下一次回放和对比。"))
+    note_group = QtWidgets.QGroupBox("测试条件与备注")
+    note_layout = QtWidgets.QVBoxLayout(note_group)
     w.note = QtWidgets.QPlainTextEdit()
     w.note.setPlaceholderText("记录速度、路段、测试条件和观察现象…")
     w.note.setMaximumHeight(110)
-    r.addWidget(w.note)
+    note_layout.addWidget(w.note)
+    r.addWidget(note_group)
     actions = QtWidgets.QHBoxLayout()
     for title, callback in [("保存实验…", w.save_experiment), ("导出 CSV…", w.export_csv), ("载入回放…", w.load_experiment)]:
         actions.addWidget(push(title, callback))
     actions.addStretch()
     r.addLayout(actions)
     w.log_view = QtWidgets.QPlainTextEdit()
+    w.log_view.setObjectName("eventLog")
+    w.log_view.setPlaceholderText("设备连接、参数确认与实验操作会记录在这里。")
     w.log_view.setReadOnly(True)
     w.log_view.setMaximumBlockCount(1000)
     r.addWidget(w.log_view, 1)
@@ -405,6 +473,9 @@ def build_workspace(w):
     monitor = QtWidgets.QWidget()
     monitor.setObjectName("dockContent")
     m = QtWidgets.QVBoxLayout(monitor)
+    m.setContentsMargins(12, 10, 12, 12)
+    m.setSpacing(10)
+    m.addWidget(section_header("数据看板", "当前采样值 · 自定义通道与单位"))
     controls = QtWidgets.QHBoxLayout()
     controls.addWidget(push("添加", w.add_card))
     controls.addWidget(push("保存", w.save_dashboard))
@@ -420,6 +491,8 @@ def build_workspace(w):
     analysis = QtWidgets.QWidget()
     analysis.setObjectName("dockContent")
     a = QtWidgets.QVBoxLayout(analysis)
+    a.setContentsMargins(12, 10, 12, 12)
+    a.setSpacing(10)
     actions = QtWidgets.QHBoxLayout()
     actions.addWidget(push("规则分析", w.update_advice))
     actions.addWidget(push("串级判断", w.show_cascade))
@@ -518,7 +591,7 @@ def apply_layout(w, name):
         w.monitor_dock.show()
         w.analysis_dock.raise_()
         w.tabs.setCurrentIndex(0)
-        w.resizeDocks([w.control_dock, w.analysis_dock], [265, 320], QtCore.Qt.Orientation.Horizontal)
+        w.resizeDocks([w.control_dock, w.analysis_dock], [310, 340], QtCore.Qt.Orientation.Horizontal)
     elif name == "实验对比":
         w.analysis_dock.show()
         w.tabs.setCurrentIndex(1)
@@ -540,6 +613,8 @@ def apply_theme(w, name):
                         (QtGui.QPalette.ColorRole.Text, p["text"]), (QtGui.QPalette.ColorRole.Button, p["panel"]),
                         (QtGui.QPalette.ColorRole.ButtonText, p["text"]), (QtGui.QPalette.ColorRole.Highlight, p["accent"]),
                         (QtGui.QPalette.ColorRole.HighlightedText, "#ffffff"), (QtGui.QPalette.ColorRole.ToolTipBase, p["panel"]),
+                        (QtGui.QPalette.ColorRole.Mid, p["border"]), (QtGui.QPalette.ColorRole.PlaceholderText, p["muted"]),
+                        (QtGui.QPalette.ColorRole.Link, p["accent"]),
                         (QtGui.QPalette.ColorRole.ToolTipText, p["text"])]:
         palette.setColor(role, QtGui.QColor(value))
     app.setPalette(palette)

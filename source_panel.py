@@ -5,6 +5,7 @@ import uuid
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from source_sync import SourceFile, digest_text, replace_gains, scan_candidates
+from ui_components import CodeEditor, DiffEditor, section_header
 
 
 class ReviewDialog(QtWidgets.QDialog):
@@ -14,23 +15,23 @@ class ReviewDialog(QtWidgets.QDialog):
         self.setWindowTitle('核对源码修改')
         self.resize(820, 600)
         layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(24, 22, 24, 20)
+        layout.setSpacing(12)
+        layout.addWidget(section_header('保存源码', '先核对差异，再将草稿写回工程。'))
         path = QtWidgets.QLabel(str(plan.source.path))
         path.setWordWrap(True)
         layout.addWidget(path)
         info = QtWidgets.QLabel('只保存这个文件。原文件会先备份；保存源码不下发串口参数，也不编译或烧录。')
         info.setWordWrap(True)
         layout.addWidget(info)
-        self.diff = QtWidgets.QPlainTextEdit(plan.diff)
-        self.diff.setReadOnly(True)
-        self.diff.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
-        self.diff.setFont(QtGui.QFont('Consolas', 11))
-        self.diff.setStyleSheet("font-family:'Consolas','Noto Sans SC';")
+        self.diff = DiffEditor(plan.diff)
         layout.addWidget(self.diff, 1)
         self.message = QtWidgets.QLabel('')
         self.message.setWordWrap(True)
         layout.addWidget(self.message)
         buttons = QtWidgets.QDialogButtonBox()
         self.save_button = buttons.addButton('确认保存这个文件', QtWidgets.QDialogButtonBox.ButtonRole.AcceptRole)
+        self.save_button.setProperty('primary', True)
         self.save_button.clicked.connect(self.save)
         buttons.addButton('取消', QtWidgets.QDialogButtonBox.ButtonRole.RejectRole).clicked.connect(self.reject)
         layout.addWidget(buttons)
@@ -56,42 +57,50 @@ class SourcePanel(QtWidgets.QWidget):
         self.window, self.root, self.source = window, None, None
         self.scanned_digest = None
         layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
         actions = QtWidgets.QHBoxLayout()
         for title, callback in [('打开工程…', self.choose_project), ('打开源码…', self.choose_source), ('重新载入', self.reload)]:
             button = QtWidgets.QPushButton(title)
             button.clicked.connect(callback)
             actions.addWidget(button)
         layout.addLayout(actions)
-        demo = QtWidgets.QPushButton('体验源码写回（独立示例工程）')
+        demo = QtWidgets.QPushButton('体验源码写回 · 独立示例')
+        demo.setToolTip('在用户数据目录创建独立示例，不修改小车工程')
         demo.clicked.connect(self.open_demo)
         layout.addWidget(demo)
+        self.file_title = QtWidgets.QLabel('未打开源码')
+        self.file_title.setProperty('role', 'filename')
+        layout.addWidget(self.file_title)
         self.path_label = QtWidgets.QLabel('先选择小车工程，再打开需要修改的 .c / .h 文件。')
         self.path_label.setWordWrap(True)
+        self.path_label.setProperty('muted', True)
         self.path_label.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self.path_label)
         hint = QtWidgets.QLabel('可以直接编辑代码，或绑定 P / I / D 后填入数值。源码草稿与板上运行参数分别保存。')
         hint.setWordWrap(True)
         hint.setProperty('muted', True)
         layout.addWidget(hint)
-        self.editor = QtWidgets.QPlainTextEdit()
+        self.editor = CodeEditor()
         self.editor.setReadOnly(True)
-        self.editor.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
-        self.editor.setFont(QtGui.QFont('Consolas', 11))
-        self.editor.setStyleSheet("font-family:'Consolas','Noto Sans SC';")
         self.editor.setPlaceholderText('打开源码后，可在这里修改代码；保存前会展示差异。')
         self.editor.textChanged.connect(self.changed)
         layout.addWidget(self.editor, 1)
+        mapping = QtWidgets.QGroupBox('参数写回')
+        mapping_layout = QtWidgets.QVBoxLayout(mapping)
         bindings = QtWidgets.QFormLayout()
+        bindings.setVerticalSpacing(7)
+        mapping_layout.addLayout(bindings)
         self.bindings = {}
-        for key, title in [('kp', 'P 对应源码'), ('ki', 'I 对应源码'), ('kd', 'D 对应源码')]:
+        for key, title in [('kp', 'P 位置'), ('ki', 'I 位置'), ('kd', 'D 位置')]:
             combo = QtWidgets.QComboBox()
             combo.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
             combo.setMinimumContentsLength(15)
             self.bindings[key] = combo
             bindings.addRow(title, combo)
-        layout.addLayout(bindings)
         row = QtWidgets.QHBoxLayout()
-        self.scan_button = QtWidgets.QPushButton('识别数值位置')
+        self.scan_button = QtWidgets.QPushButton('重新识别')
+        self.scan_button.setToolTip('识别当前草稿中的数值宏、初始化与成员赋值')
         self.scan_button.clicked.connect(self.scan)
         row.addWidget(self.scan_button)
         self.value_source = QtWidgets.QComboBox()
@@ -100,7 +109,8 @@ class SourcePanel(QtWidgets.QWidget):
         self.fill_button = QtWidgets.QPushButton('填入当前 PID')
         self.fill_button.clicked.connect(self.fill)
         row.addWidget(self.fill_button)
-        layout.addLayout(row)
+        mapping_layout.addLayout(row)
+        layout.addWidget(mapping)
         self.save_button = QtWidgets.QPushButton('预览修改并保存到工程…')
         self.save_button.setProperty('primary', True)
         self.save_button.clicked.connect(self.preview)
@@ -129,6 +139,7 @@ class SourcePanel(QtWidgets.QWidget):
         if not root.is_dir():
             raise ValueError('请选择工程文件夹')
         self.root, self.source = root, None
+        self.file_title.setText('未打开源码')
         self.editor.clear()
         self.editor.setReadOnly(True)
         self.path_label.setText('工程：' + str(root) + '\n请选择源码文件')
@@ -186,9 +197,12 @@ class SourcePanel(QtWidgets.QWidget):
         if not force and not self.can_discard():
             return False
         self.source = source
+        self.file_title.setText(source.path.name)
         self.editor.setReadOnly(False)
         self.editor.setPlainText(source.text)
-        self.path_label.setText(str(source.path) + '\n' + source.encoding + ' · ' + ('CRLF' if source.newline == '\r\n' else 'LF'))
+        self.path_label.setText(source.root.name + ' / ' + source.path.relative_to(source.root).as_posix() + '\n' + source.encoding + ' · ' + ('CRLF' if source.newline == '\r\n' else 'LF'))
+        self.path_label.setToolTip(str(source.path))
+        self.path_label.setProperty('muted', True)
         self.scan()
         self.message.setText('源码已载入。请核对参数绑定位置；尚未修改磁盘文件。')
         return True

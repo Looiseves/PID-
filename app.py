@@ -19,6 +19,7 @@ from integration import LocalBridge, data_directory
 from workspace_ui import build_workspace
 from pid_link import PROTOCOL, make_parser
 import live_tuning
+from ui_components import CardDialog, section_header
 
 COLORS = ["#4dd5bc", "#65aaff", "#ffb86b", "#b399ff", "#ee87b7", "#cfdf83", "#e8edf4"]
 APP_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
@@ -39,7 +40,15 @@ class ConnectionDialog(QtWidgets.QDialog):
         self.setWindowTitle("设备连接与通道映射")
         self.resize(600, 510)
         self.scanner = None
-        form = QtWidgets.QFormLayout(self)
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(24, 22, 24, 20)
+        outer.setSpacing(12)
+        form = QtWidgets.QFormLayout()
+        outer.addLayout(form)
+        self.form = form
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setVerticalSpacing(10)
+        form.addRow(section_header("连接设备", "选择传输方式与协议，映射需要观察的信号。"))
         self.kind = QtWidgets.QComboBox()
         self.kind.addItems(["串口 / 蓝牙虚拟串口", "蓝牙 BLE"])
         self.kind.setCurrentIndex(settings.get("kind", 0))
@@ -62,6 +71,7 @@ class ConnectionDialog(QtWidgets.QDialog):
         row = QtWidgets.QHBoxLayout()
         row.addWidget(self.address, 1)
         row.addWidget(self.scan_button)
+        self.ble_row = row
         form.addRow("BLE 地址", row)
         self.notify = QtWidgets.QLineEdit(settings.get("notify_uuid", ""))
         self.write = QtWidgets.QLineEdit(settings.get("write_uuid", ""))
@@ -83,9 +93,13 @@ class ConnectionDialog(QtWidgets.QDialog):
         self.message.setWordWrap(True)
         form.addRow(self.message)
         actions = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        actions.button(QtWidgets.QDialogButtonBox.StandardButton.Ok).setText("连接")
+        actions.button(QtWidgets.QDialogButtonBox.StandardButton.Ok).setProperty("primary", True)
+        actions.button(QtWidgets.QDialogButtonBox.StandardButton.Cancel).setText("取消")
         actions.accepted.connect(self.validate)
         actions.rejected.connect(self.reject)
-        form.addRow(actions)
+        outer.addStretch()
+        outer.addWidget(actions)
         self.kind.currentIndexChanged.connect(self.update_fields)
         self.update_fields()
 
@@ -95,6 +109,11 @@ class ConnectionDialog(QtWidgets.QDialog):
         self.baud.setEnabled(not is_ble)
         for item in (self.address, self.notify, self.write, self.scan_button):
             item.setEnabled(is_ble)
+        for row in (self.ble_row, self.notify, self.write):
+            self.form.setRowVisible(row, is_ble)
+        for row in (self.port, self.baud):
+            self.form.setRowVisible(row, not is_ble)
+        self.resize(650, 590 if is_ble else 485)
 
     def scan(self):
         if self.scanner and self.scanner.isRunning():
@@ -244,6 +263,8 @@ class MainWindow(QtWidgets.QMainWindow):
             card = QtWidgets.QFrame()
             card.setProperty("card", True)
             layout = QtWidgets.QVBoxLayout(card)
+            layout.setContentsMargins(14, 12, 14, 14)
+            layout.setSpacing(6)
             head = QtWidgets.QHBoxLayout()
             name = QtWidgets.QLabel(title)
             name.setProperty("muted", True)
@@ -251,6 +272,7 @@ class MainWindow(QtWidgets.QMainWindow):
             head.addStretch()
             edit = button("⋯", lambda _, index=i: self.edit_card(index))
             edit.setFixedWidth(32)
+            edit.setToolTip("编辑名称、通道与单位")
             edit.setStyleSheet("padding:0;border:none;")
             head.addWidget(edit)
             layout.addLayout(head)
@@ -264,19 +286,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self.card_grid.addWidget(card, i, 0)
 
     def card_dialog(self, definition=("自定义参数", "actual", "")):
-        title, ok = QtWidgets.QInputDialog.getText(self, "看板卡片", "显示名称", text=definition[0])
-        if not ok or not title.strip():
-            return None
-        channel, ok = QtWidgets.QInputDialog.getItem(self, "通道绑定", "选择通道", list(self.curves),
-                                                   max(0, list(self.curves).index(definition[1]) if definition[1] in self.curves else 0), False)
-        if not ok:
-            return None
-        unit, ok = QtWidgets.QInputDialog.getText(self, "显示单位", "单位（可留空，例如 rpm、V、mm）", text=definition[2])
-        return (title.strip(), channel, unit.strip()) if ok else None
+        dialog = CardDialog(self.curves, definition, self)
+        return dialog.definition() if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted else None
 
     def add_card(self):
         if len(self.card_definitions) >= 8:
-            self.info("首版最多显示 8 张卡片。")
+            self.info("最多显示 8 张卡片。")
             return
         definition = self.card_dialog()
         if definition:
@@ -574,7 +589,10 @@ class MainWindow(QtWidgets.QMainWindow):
         for row, key in enumerate(keys):
             for col, value in enumerate([key, base["metrics"].get(key), current["metrics"].get(key)]):
                 text = value if isinstance(value, str) else ("证据不足" if value is None else f"{value:.4f}")
-                self.compare_table.setItem(row, col, QtWidgets.QTableWidgetItem(text))
+                item = QtWidgets.QTableWidgetItem(text)
+                if col:
+                    item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+                self.compare_table.setItem(row, col, item)
         changed = self.baseline.params != self.experiment.params
         context_changed = self.baseline.scenario != self.experiment.scenario or self.baseline.source != self.experiment.source
         self.compare_label.setText(f"基线 {len(self.baseline.samples):,} 样本 / 当前 {len(self.experiment.samples):,} 样本。"
@@ -584,9 +602,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def update_advice(self):
         import html
         result = analyze(self.experiment)
-        self.advice.setHtml("<b>" + html.escape(result["summary"]) + "</b>"
-                            + "".join("<p>" + html.escape(s) + "</p>" for s in result["findings"])
-                            + "".join("<p><b>建议实验：</b>" + html.escape(s) + "</p>" for s in result["suggestions"]))
+        self.advice.setHtml('<h3 style="font-size:15px;font-weight:600;">' + html.escape(result["summary"]) + '</h3>'
+                            + ('<h4>观察依据</h4>' if result['findings'] else '')
+                            + "".join('<p style="margin-bottom:12px;">' + html.escape(s) + "</p>" for s in result["findings"])
+                            + ('<h4>下一次实验</h4>' if result['suggestions'] else '')
+                            + "".join('<p style="margin-bottom:12px;">' + html.escape(s) + "</p>" for s in result["suggestions"]))
         self.update_comparison()
 
     def choose_file(self, title, save=True, extension="json"):

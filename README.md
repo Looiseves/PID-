@@ -4,11 +4,13 @@
 
 一款 Windows 原生桌面工具，把实时波形、PID 参数、数据看板和实验分析放进同一个工作台。双击 EXE 即可体验，无需安装 Python；默认使用模拟设备，不需要 API Key。
 
-[下载 Windows 版 v0.5.0](https://github.com/Looiseves/PID-/releases/tag/v0.5.0) · [使用说明](docs/USER_GUIDE.md) · [版本记录](CHANGELOG.md)
+[下载 Windows 版 v0.6.0](https://github.com/Looiseves/PID-/releases/tag/v0.6.0) · [使用说明](docs/USER_GUIDE.md) · [界面图集](docs/UI_GALLERY.md) · [版本记录](CHANGELOG.md)
 
 ![实时波形工作台](docs/images/waveform.png)
 
 *大波形区与独立信号列表。截图为本地模拟数据。*
+
+v0.6.0 统一深浅工作台、参数栏、看板、表格和设置弹窗；源码区提供行号与语法颜色，保存预览区分增删。全部工作区截图见[界面图集](docs/UI_GALLERY.md)。
 
 ## 主要功能
 
@@ -45,7 +47,7 @@
 
 1. 从 [Releases](https://github.com/Looiseves/PID-/releases) 下载 Windows x64 压缩包，完整解压。
 2. 双击文件夹中的 `PID调参助手.exe`，保留 `_internal` 文件夹。
-3. 在顶部“工作台”进入“PID 调参”，点击“体验串口调参（虚拟板端）”。
+3. 在顶部“工作台”进入“PID 调参”，点击“虚拟板端演示”。
 4. 调整一个参数，观察回读确认与曲线变化，再设为基线做对比。
 
 默认演示不连接真实硬件。`PIDAssistant-MCP.exe` 由 Codex 启动，无需单独双击。模型分析按你配置的供应商计费，只在主动点击后发送实验数据。
