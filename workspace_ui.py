@@ -456,7 +456,12 @@ def build_workspace(w):
     w.analysis_dock.setMinimumWidth(300)
     w.monitor_dock.setMinimumWidth(250)
     w.pending_proposal = None
-    w.all_docks = [w.control_dock, w.channels_dock, w.monitor_dock, w.analysis_dock]
+    from source_panel import SourcePanel
+    w.source_panel = SourcePanel(w)
+    w.source_dock = dock(w, "工程源码", "sourceDock", w.source_panel, QtCore.Qt.DockWidgetArea.RightDockWidgetArea)
+    w.source_dock.setMinimumWidth(390)
+    w.source_dock.hide()
+    w.all_docks = [w.control_dock, w.channels_dock, w.monitor_dock, w.analysis_dock, w.source_dock]
     w.stats = QtWidgets.QLabel("")
     w.statusBar().addWidget(w.stats, 1)
     w.mcp_status = QtWidgets.QLabel("MCP · 本机数据")
@@ -470,6 +475,7 @@ def build_workspace(w):
         if shortcut:
             action.setShortcut(shortcut)
     view = w.menuBar().addMenu("视图")
+    files.addAction("打开工程源码工作区", lambda: w.navigation.navigate("source"))
     for widget in w.all_docks:
         view.addAction(widget.toggleViewAction())
     view.addSeparator()
@@ -500,6 +506,7 @@ def apply_layout(w, name):
     w.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, w.control_dock)
     w.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, w.monitor_dock)
     w.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, w.analysis_dock)
+    w.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, w.source_dock)
     if name == "示波器":
         w.channels_dock.show()
         w.tabs.setCurrentIndex(0)

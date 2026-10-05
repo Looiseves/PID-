@@ -701,6 +701,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.statusBar().showMessage("模型请求尚未结束，请等待返回或超时后关闭。", 4000)
             event.ignore()
             return
+        if hasattr(self, "source_panel") and not self.source_panel.can_discard():
+            event.ignore()
+            return
         if self.stop_worker():
             self.bridge_timer.stop()
             self.publish_bridge(closed=True)

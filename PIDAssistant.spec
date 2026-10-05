@@ -34,4 +34,4 @@ mcp_pyz = PYZ(m.pure)
 mcp_exe = EXE(mcp_pyz, m.scripts, [], exclude_binaries=True, name='PIDAssistant-MCP',
               debug=False, strip=False, upx=False, console=True)
 coll = COLLECT(exe, mcp_exe, a.binaries, a.datas, m.binaries, m.datas,
-               strip=False, upx=False, name='PIDAssistant-v0.4.1')
+               strip=False, upx=False, name='PIDAssistant-v0.5.0')

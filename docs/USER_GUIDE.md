@@ -1,4 +1,4 @@
-# PID 调参助手 v0.4.1 使用说明
+# PID 调参助手 v0.5.0 使用说明
 
 Windows 本地桌面软件。默认模拟设备，双击 `PID调参助手.exe` 即可使用，不需要安装 Python、联网或填写 API Key。
 
@@ -20,7 +20,21 @@ Windows 本地桌面软件。默认模拟设备，双击 `PID调参助手.exe` �
 
 “输入值”与“板上实际值”分别显示。目标值与输出限幅在本版 PIDLink 中只是原有分析参考，不会下发，也没有被设备确认。Codex 建议填入参数栏时暂停实时应用，仍需你审阅并点击应用。
 
-这个版本完成了桌面协议与通用固件接口，尚未接入你的具体小车工程。真实设备需要固件把参数绑定到已有 PID，按实际单位、范围与控制周期处理。运行时调参不需要每次重新烧录；重新上电后的默认值、写 Flash、IDE 编译烧录与源码同步尚未实现。
+这个版本完成了桌面协议与通用固件接口，尚未接入你的具体小车工程。真实设备需要固件把参数绑定到已有 PID，按实际单位、范围与控制周期处理。运行时调参不需要每次重新烧录。v0.5.0 支持编辑所选源码及 PID 数值写回；写 Flash 和 IDE 编译烧录尚未接入。
+
+## 在助手里修改工程源码
+
+1. 顶部“工作台 → 工程源码”，或 Ctrl+K 搜索“源码”。左侧保留 PID 控制栏，中央波形继续显示，右侧是工程源码面板。
+2. 点击“打开工程”，选择已有小车工程文件夹，再点击“打开源码”，选择工程内的 `.c` / `.h` 等 C/C++ 文件。不需要移动工程或修改 IDE 配置。
+3. 可以直接在源码编辑框中修改代码；这时只是草稿，尚未写入磁盘。
+4. 需要同步 PID 时，在 P / I / D 下拉框中分别选择准确位置，核对变量名、原值和行号。支持直接数值宏、数值初始化或成员赋值；忽略注释和字符串，不解释表达式，不猜测控制环。例如 `#define LINE_KP 1.2f`、`float ki = 0.0f;`、`pid.kd = 0.08f;` 和 `.kp = 1.2f,`。
+5. 选择“参数栏输入值”或“板端已确认值”，点击“填入当前 PID”，把这组三个数填进代码草稿。板端值要求当前 PIDLink 连接已回读且没有未完成请求；没有确认就不能冒充实际值。代码手动改过后需重新识别并核对绑定。
+6. 点击“预览修改并保存到工程”，核对完整文件差异，再点击“确认保存这个文件”。取消只保留草稿。每次只写回选中的一个文件，原文件先备份到 `%LOCALAPPDATA%\PIDAssistant\source-backups`；界面显示实际备份路径（自定义数据目录时路径随之改变）。
+7. 如果 IDE 或其他程序改过磁盘文件，预览或确认时会拒绝覆盖；重新载入后再核对修改。保留原编码（UTF-8、UTF-8 BOM 或兼容 GB18030）与 LF / CRLF；只读、混合换行、二进制文件及超过 2 MB 的文件不写入。
+
+没有工程时，点击“体验源码写回（独立示例工程）”。软件在用户数据目录创建一个新的示例，预先绑定三个示例位置；不会修改真实小车工程。
+
+**源码保存与板端应用是两个明确动作。** “填入当前 PID”不会发送串口命令，“保存到工程”不会编译、烧录或写 Flash。想立即试跑，使用原有“应用到小车”；想在下次编译时保留参数，再保存源码并通过原 IDE 编译 / 烧录。尚未提供 IDE 工具链适配、完整代码补全或语法编译检查，任意手动修改是否可编译仍由工程工具链验证。关闭窗口、换工程或载入其他文件时，未保存草稿会提示。
 
 ## 工作区和外观
 
@@ -107,7 +121,7 @@ Chat Completions 对 OpenAI 使用 `max_completion_tokens`，对兼容地址使�
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe app.py
-.\.venv\Scripts\python.exe -m unittest -v test_core test_transports test_integration test_pid_link
+.\.venv\Scripts\python.exe -m unittest -v test_core test_transports test_integration test_pid_link test_source_sync
 .\.venv\Scripts\python.exe app.py --smoke-test validation\source --data-dir validation\source\profile
 .\.venv\Scripts\python.exe validate_firmware.py
 .\.venv\Scripts\python.exe -m PyInstaller PIDAssistant.spec
@@ -115,7 +129,7 @@ py -3.12 -m venv .venv
 
 使用 `PIDAssistant.spec` 打包免安装文件夹。整个文件夹需要一起保留；不能只取出 EXE 而删除 `_internal`。
 
-重复构建时使用新的输出目录，例如 `python -m PyInstaller --distpath dist-v0.4.1-check2 PIDAssistant.spec`，保留已有构建，不清理或批量删除文件。
+重复构建时使用新的输出目录，例如 `python -m PyInstaller --distpath dist-v0.5.0-check2 PIDAssistant.spec`，保留已有构建，不清理或批量删除文件。
 
 发布前用 `verify_build.py <EXE路径> <结果JSON路径>` 检查打包代码与源码一致。发布工具为 `package_release.py <打包输出目录名>`，生成运行包、源码 ZIP、Git bundle、依赖许可和提交清单。恢复 Git 历史可以执行 `git clone <bundle路径> <新目录>`。
 

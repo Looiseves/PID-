@@ -85,7 +85,7 @@ def run_navigation(app, w, folder, check):
     QTest.keyClick(palette.input, QtCore.Qt.Key.Key_Up)
     check("command_up_selects_previous_result", palette.results.currentRow() == 0)
     QTest.keyClicks(palette.input, "PID")
-    check("command_filters_on_each_keystroke", palette.results.count() == 1 and palette.results.item(0).text() == "PID 调参")
+    check("command_filters_on_each_keystroke", {palette.results.item(i).text() for i in range(palette.results.count())} == {"PID 调参", "工程源码"} and palette.results.item(0).text() == "PID 调参")
     check("command_highlights_matching_text_and_escapes_html", "text-decoration:underline" in palette.delegate.marked("PID 调参", "#529bd5") and "&lt;" in palette.delegate.marked("<PID>", "#529bd5"))
     QTest.qWait(250)
     check("acquisition_continues_under_command_overlay", len(w.experiment.samples) > before)

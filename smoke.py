@@ -236,6 +236,8 @@ def run_smoke(app, window, folder):
         run_navigation(app, window, folder, check)
         from smoke_typography import run_typography
         run_typography(app, window, folder, check)
+        from smoke_source import run_source
+        run_source(app, window, folder, check)
         (folder / "smoke-result.json").write_text(json.dumps({"passed": True, "checks": checks}, ensure_ascii=False, indent=2), encoding="utf-8")
         window.close()
         app.exit(0)
