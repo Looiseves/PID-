@@ -13,6 +13,10 @@
 | pyserial | 串口 | BSD-3-Clause，https://github.com/pyserial/pyserial |
 | bleak | BLE | MIT，https://github.com/hbldh/bleak |
 | PyInstaller | 打包工具 | GPL with bootloader exception，https://pyinstaller.org/ |
+| Noto Sans SC | 中文界面字体，随应用打包 | SIL OFL 1.1，https://github.com/google/fonts/tree/main/ofl/notosanssc |
+| Inter | 数字、看板数值与波形刻度 | SIL OFL 1.1，https://github.com/google/fonts/tree/main/ofl/inter |
+
+字体为 Google Fonts 官方仓库提交 `9710da1eacb3be272583c3224dcb70f9da6eadbb` 的未修改变量字体，保持原有字体名称。完整字体、版权与 OFL 许可位于 `assets/fonts/`；`sources.json` 记录固定来源与 SHA256。发布包在 `_internal/assets/fonts/` 中保留字体，在 `THIRD_PARTY_LICENSES/fonts/` 中另提供可直接查看的许可和来源记录。字体无需安装到 Windows。
 
 发行包保留动态库和第三方许可文件，不对 Qt/PySide6 静态链接。Qt 用户界面为 Widgets，未使用 Qt Charts。依赖文件可随免安装文件夹更换，源码提供对应打包配置。
 

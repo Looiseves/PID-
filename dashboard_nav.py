@@ -430,7 +430,7 @@ class ResultDelegate(QtWidgets.QStyledItemDelegate):
         doc.setDefaultFont(option.font)
         doc.setDocumentMargin(0)
         doc.setHtml(f'<div style="color:{c["text"].name()}">{self.marked(d.title, c["accent"].name())}</div>'
-                    f'<div style="color:{c["muted"].name()};font-size:11px">'
+                    f'<div style="color:{c["muted"].name()};font-size:12px">'
                     f'{self.marked(d.group + " · " + d.description, c["accent"].name())}</div>')
         doc.setTextWidth(option.rect.width() - 60)
         painter.translate(option.rect.x() + 48, option.rect.y() + 11)

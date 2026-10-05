@@ -38,6 +38,10 @@ def collect_licenses(destination):
     if supplemental.exists():
         shutil.copytree(supplemental, root / "supplemental", dirs_exist_ok=True)
     (root / "dependency-list.json").write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+    fonts = root / "fonts"
+    fonts.mkdir(exist_ok=True)
+    for name in ("NotoSansSC-OFL.txt", "Inter-OFL.txt", "sources.json"):
+        shutil.copy2(PROJECT / "assets" / "fonts" / name, fonts / name)
 
 
 def archive_tree(source, target):
@@ -57,6 +61,7 @@ def main():
     for name in ("README.md", "CHANGELOG.md", "THIRD_PARTY.md", "VALIDATION.md", "LICENSE"):
         shutil.copy2(PROJECT / name, destination / name)
     shutil.copytree(PROJECT / "firmware", destination / "firmware", dirs_exist_ok=True)
+    shutil.copytree(PROJECT / "docs", destination / "docs", dirs_exist_ok=True)
     collect_licenses(destination)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=PROJECT, text=True).strip()
     source_archive = OUTPUTS / f"PIDAssistant-v{VERSION}-source.zip"

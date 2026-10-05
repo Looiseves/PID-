@@ -11,6 +11,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 import pyqtgraph as pg
 
 from core import CHANNELS, SCENARIOS, VERSION
+from ui_fonts import UI_FAMILY, NUMBER_FAMILY, configure_typography, number_font
 from integration import (SecretStore, api_context, api_endpoint, atomic_json, codex_config_text,
                          data_directory, install_codex_config, request_analysis)
 
@@ -25,7 +26,7 @@ PALETTES = {
 def theme_styles(name):
     p = PALETTES[name]
     return f"""
-QWidget {{font-family:'Microsoft YaHei UI';font-size:12px;color:{p['text']};}}
+QWidget {{font-family:'{UI_FAMILY}','Segoe UI';font-size:13px;color:{p['text']};}}
 QMainWindow,QDialog,QWidget#dockContent {{background:{p['bg']};}}
 QDockWidget {{font-weight:600;}}
 QDockWidget::title {{background:{p['panel']};padding:5px 8px;border-bottom:1px solid {p['border']};}}
@@ -48,7 +49,8 @@ QScrollArea {{border:0;background:transparent;}}
 QWidget#channelPanel,QWidget#channelViewport {{background:{p['bg']};}}
 QLabel[muted="true"] {{color:{p['muted']};}}
 QFrame[card="true"] {{background:{p['panel']};border:1px solid {p['border']};}}
-QLabel[value="true"] {{font-family:'Consolas';font-size:21px;color:{p['text']};}}
+QLabel[value="true"] {{font-family:'{NUMBER_FAMILY}';font-size:21px;font-weight:500;color:{p['text']};}}
+QSpinBox,QDoubleSpinBox {{font-family:'{NUMBER_FAMILY}','{UI_FAMILY}';}}
 QTableWidget {{background:{p['field']};alternate-background-color:{p['panel']};gridline-color:{p['border']};border:0;}}
 QHeaderView::section {{background:{p['panel']};color:{p['text']};padding:5px;border:0;}}
 QSplitter::handle {{background:{p['border']};}}
@@ -209,6 +211,7 @@ def dock(window, title, name, content, area):
 
 
 def build_workspace(w):
+    configure_typography()
     w.setDockOptions(QtWidgets.QMainWindow.DockOption.AllowTabbedDocks | QtWidgets.QMainWindow.DockOption.AllowNestedDocks)
     w.setTabPosition(QtCore.Qt.DockWidgetArea.AllDockWidgetAreas, QtWidgets.QTabWidget.TabPosition.South)
     w.layout_name = "示波器"
@@ -538,6 +541,7 @@ def apply_theme(w, name):
         plot.setBackground(p["plot"])
         for axis in ("bottom", "left"):
             item = plot.getAxis(axis)
+            item.setTickFont(number_font(12))
             item.setTextPen(p["muted"])
             item.setPen(p["border"])
             item.setLabel(item.labelText, units=item.labelUnits, color=p["muted"])

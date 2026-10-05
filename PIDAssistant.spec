@@ -8,7 +8,8 @@ a = Analysis(
     [str(project / 'app.py')],
     pathex=[str(project)],
     binaries=[],
-    datas=[(str(project / 'README.md'), '.'), (str(project / 'THIRD_PARTY.md'), '.')],
+    datas=[(str(project / 'README.md'), '.'), (str(project / 'THIRD_PARTY.md'), '.'),
+           (str(project / 'assets' / 'fonts'), 'assets/fonts')],
     hiddenimports=collect_submodules('bleak.backends.winrt'),
     hookspath=[],
     hooksconfig={},
@@ -33,4 +34,4 @@ mcp_pyz = PYZ(m.pure)
 mcp_exe = EXE(mcp_pyz, m.scripts, [], exclude_binaries=True, name='PIDAssistant-MCP',
               debug=False, strip=False, upx=False, console=True)
 coll = COLLECT(exe, mcp_exe, a.binaries, a.datas, m.binaries, m.datas,
-               strip=False, upx=False, name='PIDAssistant-v0.4.0')
+               strip=False, upx=False, name='PIDAssistant-v0.4.1')
