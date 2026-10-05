@@ -32,6 +32,7 @@ DESTINATIONS = (
     Destination("ai", "模型分析", "查看模型结果，填写下一次分析问题", "分析", SP.SP_DialogHelpButton, "ai api"),
     Destination("model", "模型与 Codex 接入", "配置 API Key 或本机 MCP 连接", "设置", SP.SP_FileDialogInfoView, "apikey mcp codex"),
     Destination("connection", "设备连接设置", "配置串口、蓝牙与上报协议", "设置", SP.SP_DriveNetIcon, "bluetooth port 串口"),
+    Destination('diagnostics', '通信诊断', '查看收发字节、无效帧与参数回复状态', '设置', SP.SP_FileDialogDetailedView, 'rx tx log 通信 诊断'),
 )
 GROUPS = tuple(dict.fromkeys(d.group for d in DESTINATIONS))
 
@@ -772,4 +773,6 @@ class DashboardNavigation(QtCore.QObject):
             ModelSettingsDialog(w).exec()
         elif key == "connection":
             w.configure_connection()
+        elif key == 'diagnostics':
+            w.show_communication()
         w.statusBar().showMessage(next(d.title for d in DESTINATIONS if d.key == key), 2000)

@@ -10,10 +10,12 @@ from pid_link import IDENTIFIER, KEYS, gains
 
 
 class DemoBoardWorker(QThread):
+    virtual_board = True
     received = Signal(bytes)
     connected = Signal()
     failed = Signal(str)
     sent = Signal(str)
+    transmitted = Signal(bytes)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -25,6 +27,8 @@ class DemoBoardWorker(QThread):
         self.simulator = Simulator()
 
     def send(self, data):
+        if self.stop_event.is_set():
+            raise ConnectionError('虚拟板端已断开')
         self.commands.put_nowait(data)
 
     def stop(self):
@@ -55,14 +59,17 @@ class DemoBoardWorker(QThread):
         return f"@PID ERROR {identity} BAD_COMMAND\n".encode()
 
     def run(self):
+        if self.stop_event.is_set():
+            return
         replies = []
         deadline = time.monotonic()
         try:
             self.connected.emit()
             while not self.stop_event.is_set():
-                while not self.commands.empty():
+                while not self.commands.empty() and not self.stop_event.is_set():
                     data = self.commands.get_nowait()
                     reply = self.command(data)
+                    self.transmitted.emit(bytes(data))
                     if not self.drop_replies:
                         replies.append((time.monotonic() + .15, reply))
                     self.sent.emit("虚拟板端收到命令；等待回读确认")

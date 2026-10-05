@@ -20,6 +20,7 @@ from workspace_ui import build_workspace
 from pid_link import PROTOCOL, make_parser
 import live_tuning
 from ui_components import CardDialog, section_header
+from connection_tools import CommunicationTrace, CommunicationDialog, ConnectionPresets, connection_settings
 
 COLORS = ["#4dd5bc", "#65aaff", "#ffb86b", "#b399ff", "#ee87b7", "#cfdf83", "#e8edf4"]
 APP_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
@@ -40,6 +41,7 @@ class ConnectionDialog(QtWidgets.QDialog):
         self.setWindowTitle("设备连接与通道映射")
         self.resize(600, 510)
         self.scanner = None
+        self.presets = parent.connection_presets if parent is not None and hasattr(parent, 'connection_presets') else None
         outer = QtWidgets.QVBoxLayout(self)
         outer.setContentsMargins(24, 22, 24, 20)
         outer.setSpacing(12)
@@ -49,16 +51,30 @@ class ConnectionDialog(QtWidgets.QDialog):
         form.setContentsMargins(0, 0, 0, 0)
         form.setVerticalSpacing(10)
         form.addRow(section_header("连接设备", "选择传输方式与协议，映射需要观察的信号。"))
+        self.preset = QtWidgets.QComboBox()
+        self.preset.addItem('选择已保存的连接预设', None)
+        if self.presets:
+            for name in self.presets.profiles:
+                self.preset.addItem(name, name)
+        preset_row = QtWidgets.QHBoxLayout()
+        preset_row.addWidget(self.preset, 1)
+        self.save_preset_button = button('保存预设…', self.save_preset)
+        self.save_preset_button.setEnabled(self.presets is not None)
+        preset_row.addWidget(self.save_preset_button)
+        form.addRow('连接预设', preset_row)
         self.kind = QtWidgets.QComboBox()
         self.kind.addItems(["串口 / 蓝牙虚拟串口", "蓝牙 BLE"])
         self.kind.setCurrentIndex(settings.get("kind", 0))
         form.addRow("连接方式", self.kind)
         self.port = QtWidgets.QComboBox()
         self.port.setEditable(True)
-        for p in list_ports.comports():
-            self.port.addItem(p.device)
+        self.refresh_port_button = button('刷新', self.refresh_ports)
+        self.port_row = QtWidgets.QHBoxLayout()
+        self.port_row.addWidget(self.port, 1)
+        self.port_row.addWidget(self.refresh_port_button)
+        self.refresh_ports()
         self.port.setCurrentText(settings.get("port", self.port.currentText()))
-        form.addRow("串口名称", self.port)
+        form.addRow("串口名称", self.port_row)
         self.baud = QtWidgets.QComboBox()
         self.baud.addItems(["9600", "57600", "115200", "230400", "460800", "921600"])
         self.baud.setEditable(True)
@@ -101,7 +117,48 @@ class ConnectionDialog(QtWidgets.QDialog):
         outer.addStretch()
         outer.addWidget(actions)
         self.kind.currentIndexChanged.connect(self.update_fields)
+        self.preset.currentIndexChanged.connect(self.load_preset)
         self.update_fields()
+
+    def refresh_ports(self):
+        selected = self.port.currentText()
+        self.port.clear()
+        for port in list_ports.comports():
+            self.port.addItem(port.device)
+            self.port.setItemData(self.port.count()-1, port.description + '\n' + (port.hwid or ''), QtCore.Qt.ItemDataRole.ToolTipRole)
+        if selected:
+            self.port.setCurrentText(selected)
+
+    def save_preset(self):
+        if not self.presets:
+            return
+        name, ok = QtWidgets.QInputDialog.getText(self, '保存连接预设', '预设名称（同名会更新设置）', text=self.preset.currentData() or '')
+        if ok:
+            try:
+                self.presets.save(name, self.settings())
+                self.preset.blockSignals(True)
+                self.preset.clear()
+                self.preset.addItem('选择已保存的连接预设', None)
+                for title in self.presets.profiles:
+                    self.preset.addItem(title, title)
+                self.preset.setCurrentText(name.strip())
+                self.preset.blockSignals(False)
+                self.message.setText('预设已保存。选择预设只填入设置；点击“连接”后才打开设备。')
+            except (OSError, ValueError) as error:
+                self.message.setText(str(error))
+
+    def load_preset(self):
+        name = self.preset.currentData()
+        if not self.presets or name not in self.presets.profiles:
+            return
+        settings = self.presets.profiles[name]
+        self.kind.setCurrentIndex(settings['kind'])
+        for field in ('port', 'address', 'baud', 'protocol'):
+            getattr(self, field).setCurrentText(str(settings[field]))
+        self.notify.setText(settings['notify_uuid'])
+        self.write.setText(settings['write_uuid'])
+        self.names.setText(settings['names'])
+        self.message.setText('预设已填入，尚未连接设备。')
 
     def update_fields(self):
         is_ble = self.kind.currentIndex() == 1
@@ -111,9 +168,9 @@ class ConnectionDialog(QtWidgets.QDialog):
             item.setEnabled(is_ble)
         for row in (self.ble_row, self.notify, self.write):
             self.form.setRowVisible(row, is_ble)
-        for row in (self.port, self.baud):
+        for row in (self.port_row, self.baud):
             self.form.setRowVisible(row, not is_ble)
-        self.resize(650, 590 if is_ble else 485)
+        self.resize(650, 635 if is_ble else 530)
 
     def scan(self):
         if self.scanner and self.scanner.isRunning():
@@ -134,10 +191,10 @@ class ConnectionDialog(QtWidgets.QDialog):
 
     def settings(self):
         address = self.address.currentText().split("  |  ")[0].strip()
-        return {"kind": self.kind.currentIndex(), "port": self.port.currentText().strip(),
+        return connection_settings({"kind": self.kind.currentIndex(), "port": self.port.currentText().strip(),
                 "baud": int(self.baud.currentText()), "address": address,
                 "notify_uuid": self.notify.text().strip(), "write_uuid": self.write.text().strip(),
-                "protocol": self.protocol.currentText(), "names": self.names.text().strip()}
+                "protocol": self.protocol.currentText(), "names": self.names.text().strip()})
 
     def validate(self):
         try:
@@ -177,7 +234,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.hardware_connected = False
         self.connecting = False
         self.parser = None
-        self.connection_settings = {}
+        self.connection_presets = ConnectionPresets(self.data_dir)
+        self.connection_settings = dict(self.connection_presets.last)
+        self.communication = CommunicationTrace()
         self.source = "模拟设备"
         self.running = True
         self.display_paused = False
@@ -196,6 +255,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.last_tick = self.host_origin
         self.sim_remainder = 0.0
         self.log("软件已启动；当前为本地模拟设备，不会自动连接硬件。")
+        if self.connection_presets.warning:
+            self.log(self.connection_presets.warning)
         self.update_advice()
         self.bridge_timer = QtCore.QTimer(self)
         self.bridge_timer.setInterval(500)
@@ -429,18 +490,31 @@ class MainWindow(QtWidgets.QMainWindow):
         dialog = ConnectionDialog(self.connection_settings, self)
         if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
             return
-        self.connection_settings = dialog.settings()
+        self.begin_connection(dialog.settings())
+
+    def begin_connection(self, settings, demo=False):
+        if self.worker and self.worker.isRunning():
+            self.info('请先断开当前设备，再更换连接。')
+            return
+        self.connection_settings = connection_settings(settings)
         s = self.connection_settings
         self.parser = make_parser(s["protocol"], [n.strip() for n in s["names"].split(",")])
-        self.worker = (SerialWorker(s["port"], s["baud"], self) if s["kind"] == 0 else
-                       BleWorker(s["address"], s["notify_uuid"], s["write_uuid"], self))
+        if demo:
+            from demo_board import DemoBoardWorker
+            self.worker = DemoBoardWorker(self)
+        else:
+            self.worker = (SerialWorker(s['port'], s['baud'], self) if s['kind'] == 0 else
+                           BleWorker(s['address'], s['notify_uuid'], s['write_uuid'], self))
         self.worker.received.connect(self.receive)
         self.worker.connected.connect(self.on_connected)
         self.worker.failed.connect(self.on_failure)
         self.worker.sent.connect(self.log)
+        self.worker.transmitted.connect(self.on_transmitted)
         self.worker.finished.connect(self.on_worker_finished)
         self.connecting = True
         self.connect_button.setEnabled(False)
+        self.disconnect_button.setEnabled(True)
+        self.communication.begin(s['port'] if s['kind'] == 0 else s['address'])
         self.connection_label.setText("正在连接设备……")
         self.worker.start()
 
@@ -448,21 +522,29 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self.stop_worker():
             return
         live_tuning.stop(self)
-        from demo_board import DemoBoardWorker
-        self.connection_settings = {"kind": 0, "port": "虚拟板端（非真实小车）", "baud": 115200,
-                                    "protocol": PROTOCOL, "names": "target,actual,error,output"}
-        self.parser = make_parser(PROTOCOL, ["target", "actual", "error", "output"])
-        self.worker = DemoBoardWorker(self)
-        self.worker.received.connect(self.receive)
-        self.worker.connected.connect(self.on_connected)
-        self.worker.failed.connect(self.on_failure)
-        self.worker.sent.connect(self.log)
-        self.worker.finished.connect(self.on_worker_finished)
-        self.connect_button.setEnabled(False)
-        self.connecting = True
-        self.worker.start()
+        self.begin_connection({'kind': 0, 'port': '虚拟板端（非真实小车）', 'baud': 115200,
+                               'protocol': PROTOCOL, 'names': 'target,actual,error,output'}, demo=True)
+
+    def current_worker_signal(self):
+        sender = self.sender()
+        return sender is None or sender is self.worker
+
+    def show_communication(self):
+        CommunicationDialog(self).exec()
+
+    def on_transmitted(self, data):
+        if self.current_worker_signal():
+            self.communication.packet('TX', data)
+
+    def disconnect_device(self):
+        if not self.stop_worker():
+            return
+        self.on_worker_finished(force=True)
+        self.log('设备已断开；波形、备注和实验记录保留。重新连接会开始新的实验。')
 
     def on_connected(self):
+        if not self.current_worker_signal() or self.worker is None or self.worker.stop_event.is_set():
+            return
         self.connecting = False
         self.hardware_connected = True
         s = self.connection_settings
@@ -474,6 +556,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.apply_button.setText("更新本地参考值")
         self.apply_button.setEnabled(True)
         self.connection_label.setText("● " + self.source + " / " + s["protocol"])
+        self.disconnect_button.setEnabled(True)
+        self.communication.state = '已连接'
+        self.communication.event('连接成功：' + self.source + ' / ' + s['protocol'])
+        if not getattr(self.worker, 'virtual_board', False):
+            try:
+                self.connection_presets.remember(s)
+            except OSError as error:
+                self.log('连接成功，但未保存设置：' + str(error))
         self.banner.setText("实际设备 · 电脑接收时间 · 下发参数需回读确认")
         self.setup_channels(self.parser.names)
         self.restart()
@@ -482,8 +572,9 @@ class MainWindow(QtWidgets.QMainWindow):
             live_tuning.start(self)
 
     def receive(self, data):
-        if not self.hardware_connected or not self.parser:
+        if not self.current_worker_signal() or not self.hardware_connected or not self.parser:
             return
+        self.communication.packet('RX', data)
         timestamp = time.monotonic() - self.host_origin
         for frame in self.parser.feed(data):
             if "_pid_control" in frame:
@@ -493,10 +584,23 @@ class MainWindow(QtWidgets.QMainWindow):
             self.experiment.append(frame)
 
     def on_failure(self, message):
+        if not self.current_worker_signal() or (self.worker and self.worker.stop_event.is_set()):
+            return
+        self.communication.state = '通信失败'
+        self.communication.event('通信失败：' + message)
+        self.hardware_connected = False
+        if self.pid_session:
+            live_tuning.confirmation(self, 'unknown')
+            live_tuning.stop(self)
+        self.send_button.setEnabled(False)
+        self.apply_button.setEnabled(False)
+        self.connection_label.setText('连接失败 · 请核对设置后重连')
         self.log("连接或通信失败：" + message)
         self.parameter_label.setText("通信失败：请检查连接与设备设置。")
 
-    def on_worker_finished(self):
+    def on_worker_finished(self, force=False):
+        if not force and not self.current_worker_signal():
+            return
         self.connecting = False
         self.hardware_connected = False
         if self.pid_session:
@@ -505,13 +609,21 @@ class MainWindow(QtWidgets.QMainWindow):
             self.apply_button.setEnabled(False)
         self.send_button.setEnabled(False)
         self.connect_button.setEnabled(True)
+        self.apply_button.setEnabled(self.source == '模拟设备')
+        self.disconnect_button.setEnabled(False)
+        if self.communication.state != '通信失败':
+            self.communication.state = '已断开'
+        self.communication.event('线程已结束；原实验记录保留')
         if self.source != "模拟设备":
-            self.connection_label.setText("● 设备已断开；原实验记录保留")
-            self.banner.setText("设备已断开 · 原记录保留")
+            failed = self.communication.state == '通信失败'
+            self.connection_label.setText('通信失败 · 原记录保留，可重新连接' if failed else '● 设备已断开；原实验记录保留')
+            self.banner.setText('通信失败 · 原记录保留' if failed else '设备已断开 · 原记录保留')
 
     def return_to_simulator(self):
         if not self.stop_worker():
             return
+        if getattr(self.worker, 'virtual_board', False):
+            self.connection_settings = dict(self.connection_presets.last)
         live_tuning.stop(self)
         self.simulator.params = self.params
         self.source = "模拟设备"
@@ -524,6 +636,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.scenario.setEnabled(True)
         self.send_button.setEnabled(False)
         self.connect_button.setEnabled(True)
+        self.disconnect_button.setEnabled(False)
         self.apply_button.setText("应用到模拟设备")
         self.apply_button.setEnabled(True)
         self.connection_label.setText("● 模拟设备 / 200 Hz")

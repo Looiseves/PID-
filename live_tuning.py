@@ -114,6 +114,7 @@ def read(w):
         return
     try:
         w.worker.send(w.pid_session.read())
+        w.communication.event('PID GET 已排队 · ' + w.pid_session.pending['id'])
         w.parameter_label.setText("正在读取板上实际 P/I/D……波形继续采集。")
     except Exception as error:
         w.pid_session.pending = None
@@ -132,6 +133,7 @@ def submit(w):
         return
     try:
         w.worker.send(session.write(draft(w)))
+        w.communication.event('PID SET 已排队，等待回读 · ' + session.pending['id'])
         confirmation(w, "pending")
         w.parameter_label.setText("等待板端应用确认……波形继续采集。")
         w.update_advice()
@@ -164,6 +166,7 @@ def receive(w, message):
     result = session.receive(message)
     if not result:
         return
+    w.communication.event('PID 回复 · ' + result['status'] + ' · ' + result['request']['id'])
     if result["status"] == "error":
         pause_auto(w)
         confirmation(w, "unknown")
@@ -208,8 +211,10 @@ def poll(w):
     session = w.pid_session
     if not session or not w.hardware_connected:
         return
+    pending_id = session.pending['id'] if session.pending else ''
     expired = session.expire()
     if expired:
+        w.communication.event('PID 回复超时 · ' + pending_id + ' · 不重发 SET')
         pause_auto(w)
         confirmation(w, "unknown")
         w.parameter_label.setText("板端回复超时，参数状态未知；波形继续记录，请重新读取。")

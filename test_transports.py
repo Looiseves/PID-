@@ -55,10 +55,11 @@ class TransportTests(unittest.TestCase):
         # The backend is pyserial's real loopback, replacing only the physical port.
         with patch("transports.serial.Serial", side_effect=lambda *args, **kwargs: serial.serial_for_url("loop://", **kwargs)):
             worker = SerialWorker("test-loopback", 115200)
-            ready, received, sent, errors = [], [], [], []
+            ready, received, sent, errors, transmitted = [], [], [], [], []
             worker.connected.connect(lambda: ready.append(True))
             worker.received.connect(received.append)
             worker.sent.connect(sent.append)
+            worker.transmitted.connect(transmitted.append)
             worker.failed.connect(errors.append)
             try:
                 worker.start()
@@ -68,6 +69,7 @@ class TransportTests(unittest.TestCase):
                 frames = StreamParser().feed(b"".join(received))
                 self.assertEqual(frames[0]["actual"], .5)
                 self.assertTrue(any("回读验证" in s for s in sent))
+                self.assertEqual(transmitted, [b'1,0.5,0.5,2\n'])
                 self.assertEqual(errors, [])
             finally:
                 worker.stop()
@@ -80,6 +82,41 @@ class TransportTests(unittest.TestCase):
         worker.start()
         self.assertTrue(wait_until(lambda: not worker.isRunning()))
         self.assertTrue(errors)
+
+    def test_stopped_workers_reject_new_commands(self):
+        for worker in (SerialWorker('COM7', 115200), BleWorker('device', 'notify', 'write')):
+            worker.stop()
+            with self.assertRaises(ConnectionError):
+                worker.send(b'command')
+            self.assertTrue(worker.commands.empty())
+
+    def test_stop_before_start_does_not_open_or_replay_queued_command(self):
+        worker = SerialWorker('COM7', 115200)
+        worker.send(b'never-send')
+        worker.stop()
+        with patch('transports.serial.Serial') as backend:
+            worker.start()
+            self.assertTrue(worker.wait(2000))
+        backend.assert_not_called()
+
+    def test_partial_write_has_no_transmitted_confirmation(self):
+        class Partial:
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+            def write(self, data):
+                return len(data)-1
+        with patch('transports.serial.Serial', return_value=Partial()):
+            worker = SerialWorker('test', 115200)
+            actual, errors = [], []
+            worker.transmitted.connect(actual.append)
+            worker.failed.connect(errors.append)
+            worker.send(b'incomplete-command')
+            worker.start()
+            self.assertTrue(wait_until(lambda: not worker.isRunning()))
+            self.assertEqual(actual, [])
+            self.assertTrue(errors)
 
     def test_ble_notifications_commands_and_shutdown_with_mock_backend(self):
         FakeBLE.instances.clear()

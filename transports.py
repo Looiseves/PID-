@@ -13,6 +13,7 @@ class SerialWorker(QThread):
     connected = Signal()
     failed = Signal(str)
     sent = Signal(str)
+    transmitted = Signal(bytes)
 
     def __init__(self, port, baud, parent=None):
         super().__init__(parent)
@@ -22,21 +23,26 @@ class SerialWorker(QThread):
         self.commands = queue.Queue(maxsize=20)
 
     def send(self, data):
+        if self.stop_event.is_set():
+            raise ConnectionError('设备已断开，命令未排队')
         self.commands.put_nowait(data)
 
     def stop(self):
         self.stop_event.set()
 
     def run(self):
+        if self.stop_event.is_set():
+            return
         try:
             with serial.Serial(self.port, self.baud, timeout=.05, write_timeout=1) as stream:
                 self.connected.emit()
                 while not self.stop_event.is_set():
-                    while not self.commands.empty():
+                    while not self.commands.empty() and not self.stop_event.is_set():
                         data = self.commands.get_nowait()
                         count = stream.write(data)
                         if count != len(data):
                             raise OSError("命令未完整发送")
+                        self.transmitted.emit(bytes(data))
                         self.sent.emit("命令已发送，设备是否应用仍需回读验证")
                     data = stream.read(min(max(stream.in_waiting, 1), 65536))
                     if data:
@@ -62,6 +68,7 @@ class BleWorker(QThread):
     connected = Signal()
     failed = Signal(str)
     sent = Signal(str)
+    transmitted = Signal(bytes)
 
     def __init__(self, address, notify_uuid, write_uuid, parent=None):
         super().__init__(parent)
@@ -72,6 +79,8 @@ class BleWorker(QThread):
         self.commands = queue.Queue(maxsize=20)
 
     def send(self, data):
+        if self.stop_event.is_set():
+            raise ConnectionError('设备已断开，命令未排队')
         if not self.write_uuid:
             raise ValueError("请在 BLE 设置中填写写入特征 UUID")
         self.commands.put_nowait(data)
@@ -80,6 +89,8 @@ class BleWorker(QThread):
         self.stop_event.set()
 
     def run(self):
+        if self.stop_event.is_set():
+            return
         try:
             asyncio.run(self._run())
         except Exception as error:
@@ -92,9 +103,10 @@ class BleWorker(QThread):
             while not self.stop_event.is_set():
                 if not client.is_connected:
                     raise ConnectionError("BLE 设备已断开")
-                while not self.commands.empty():
+                while not self.commands.empty() and not self.stop_event.is_set():
                     data = self.commands.get_nowait()
                     await client.write_gatt_char(self.write_uuid, data, response=True)
+                    self.transmitted.emit(bytes(data))
                     self.sent.emit("BLE 命令已发送，设备是否应用仍需回读验证")
                 await asyncio.sleep(.02)
             await client.stop_notify(self.notify_uuid)

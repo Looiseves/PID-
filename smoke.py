@@ -238,6 +238,8 @@ def run_smoke(app, window, folder):
         run_source(app, window, folder, check)
         from smoke_polish import run_polish
         run_polish(app, window, folder, check)
+        from smoke_connection import run_connection
+        run_connection(app, window, folder, check)
         (folder / "smoke-result.json").write_text(json.dumps({"passed": True, "checks": checks}, ensure_ascii=False, indent=2), encoding="utf-8")
         window.close()
         app.exit(0)
