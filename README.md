@@ -4,7 +4,7 @@
 
 一款 Windows 原生桌面工具，把实时波形、PID 参数、数据看板和实验分析放进同一个工作台。双击 EXE 即可体验，无需安装 Python；默认使用模拟设备，不需要 API Key。
 
-[下载 Windows 版 v0.11.0](https://github.com/Looiseves/PID-/releases/tag/v0.11.0) · [使用说明](docs/USER_GUIDE.md) · [界面图集](docs/UI_GALLERY.md) · [版本记录](CHANGELOG.md)
+[下载 Windows 版 v0.11.0](https://github.com/Looiseves/PID_LAB/releases/tag/v0.11.0) · [使用说明](docs/USER_GUIDE.md) · [界面图集](docs/UI_GALLERY.md) · [版本记录](CHANGELOG.md)
 
 ![实时波形工作台](docs/images/waveform.png)
 
@@ -55,7 +55,7 @@ v0.11.0 新增 AI 自动调参：按完整观察窗口采集与导出 CSV，在�
 
 ## 开始体验
 
-1. 从 [Releases](https://github.com/Looiseves/PID-/releases) 下载 Windows x64 压缩包，完整解压。
+1. 从 [Releases](https://github.com/Looiseves/PID_LAB/releases) 下载 Windows x64 压缩包，完整解压。
 2. 双击文件夹中的 `PID调参助手.exe`，保留 `_internal` 文件夹。
 3. 在顶部“工作台”进入“PID 调参”，点击“虚拟板端演示”。
 4. 调整一个参数，观察回读确认与曲线变化，再设为基线做对比。
