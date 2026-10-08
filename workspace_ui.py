@@ -13,7 +13,7 @@ import pyqtgraph as pg
 
 from core import CHANNELS, SCENARIOS, VERSION
 from ui_fonts import UI_FAMILY, NUMBER_FAMILY, configure_typography, number_font
-from integration import (SecretStore, analysis_identity, proposal_current, api_context, api_endpoint, atomic_json, codex_config_text,
+from integration import (SecretStore, analysis_identity, proposal_current, api_context, api_endpoint, atomic_json, codex_config_text, client_user_agent, MICU_CODEX_USER_AGENT,
                          data_directory, install_codex_config, request_analysis)
 from ui_components import DockHeader, ElidedLabel, section_header
 
@@ -129,7 +129,7 @@ class ApiWorker(QtCore.QThread):
     def run(self):
         try:
             text, usage = request_analysis(self.settings["base_url"], self.key, self.settings["model"],
-                                           self.context, self.question, self.settings["api_mode"])
+                                           self.context, self.question, self.settings["api_mode"], user_agent=self.settings.get("user_agent", ""))
             self.result.emit(text, usage)
         except Exception as error:
             self.failed.emit(str(error) if isinstance(error, ValueError) else "请求失败；请检查模型配置")
@@ -160,6 +160,14 @@ class ModelSettingsDialog(QtWidgets.QDialog):
         self.api_mode = QtWidgets.QComboBox()
         self.api_mode.addItems(["Chat Completions", "Responses"])
         self.api_mode.setCurrentText(settings.get("api_mode", "Chat Completions"))
+        self.user_agent = QtWidgets.QLineEdit(settings.get("user_agent", ""))
+        self.user_agent.setPlaceholderText("可留空；中转站有要求时填写 User-Agent")
+        self.user_agent.setMaxLength(512)
+        client_row = QtWidgets.QWidget()
+        client_layout = QtWidgets.QHBoxLayout(client_row)
+        client_layout.setContentsMargins(0, 0, 0, 0)
+        client_layout.addWidget(self.user_agent, 1)
+        client_layout.addWidget(push("米醋外接", lambda: self.user_agent.setText(MICU_CODEX_USER_AGENT)))
         self.key = QtWidgets.QLineEdit(window.api_key)
         self.key.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
         self.key.setPlaceholderText("密钥只用于你主动发起的分析")
@@ -167,6 +175,7 @@ class ModelSettingsDialog(QtWidgets.QDialog):
         self.remember.setChecked(settings.get("remember_key", False))
         for name, item in [("Base URL", self.base_url), ("模型", self.model), ("接口", self.api_mode), ("API Key", self.key)]:
             form.addRow(name, item)
+        form.addRow("客户端标识", client_row)
         form.addRow(self.remember)
         self.show_key = QtWidgets.QCheckBox("显示密钥")
         self.show_key.toggled.connect(lambda enabled: self.key.setEchoMode(QtWidgets.QLineEdit.EchoMode.Normal if enabled else QtWidgets.QLineEdit.EchoMode.Password))
@@ -226,6 +235,7 @@ class ModelSettingsDialog(QtWidgets.QDialog):
     def save(self):
         try:
             api_endpoint(self.base_url.text(), self.api_mode.currentText())
+            client_user_agent(self.user_agent.text())
             remember = self.remember.isChecked()
             key = self.key.text().strip()
             store = SecretStore(self.window.data_dir)
@@ -234,7 +244,7 @@ class ModelSettingsDialog(QtWidgets.QDialog):
             elif not remember or not key:
                 store.forget()
             settings = {"base_url": self.base_url.text().strip(), "model": self.model.text().strip(),
-                        "api_mode": self.api_mode.currentText(), "remember_key": remember,
+                        "api_mode": self.api_mode.currentText(), "remember_key": remember, "user_agent": self.user_agent.text().strip(),
                         "mcp_enabled": self.sharing.isChecked()}
             atomic_json(self.window.data_dir / "model-settings.json", settings)
             self.window.model_settings = settings

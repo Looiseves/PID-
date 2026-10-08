@@ -7,12 +7,13 @@ import threading
 import time
 import unittest
 import uuid
+from unittest.mock import patch
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 from core import Experiment, Parameters, Simulator
 from integration import (LocalBridge, SecretStore, api_context, api_endpoint, install_codex_config,
-                         live_snapshot, request_analysis, write_proposal)
+                         live_snapshot, request_analysis, write_proposal, client_user_agent, MICU_CODEX_USER_AGENT)
 from mcp_server import call_tool, serve
 
 
@@ -133,7 +134,7 @@ class IntegrationTests(unittest.TestCase):
                 pass
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-                recorded.append((self.path, self.headers.get("Authorization"), body))
+                recorded.append((self.path, self.headers.get("Authorization"), body, self.headers.get("User-Agent")))
                 if body["model"] == "denied":
                     self.send_response(401)
                     self.end_headers()
@@ -154,8 +155,10 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(usage["total_tokens"], 42)
             self.assertEqual(recorded[-1][1], "Bearer dummy-api-secret")
             self.assertNotIn("dummy-api-secret", json.dumps(recorded[-1][2]))
-            text, _ = request_analysis(url, "dummy-api-secret", "test", {}, "检查", "Responses")
+            self.assertTrue(recorded[-1][3].startswith("PIDAssistant/"))
+            text, _ = request_analysis(url, "dummy-api-secret", "test", {}, "检查", "Responses", user_agent=MICU_CODEX_USER_AGENT)
             self.assertEqual(text, "响应接口分析")
+            self.assertEqual(recorded[-1][3], MICU_CODEX_USER_AGENT)
             with self.assertRaises(ValueError) as error:
                 request_analysis(url, "dummy-api-secret", "denied", {}, "检查")
             self.assertNotIn("dummy-api-secret", str(error.exception))
@@ -163,6 +166,14 @@ class IntegrationTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join(timeout=2)
+
+    def test_invalid_client_identifier_is_rejected_before_network(self):
+        for value in [None, {}, "bad\r\nAuthorization: other", "bad\nvalue", "bad\x00", "中文", "x" * 513]:
+            with self.subTest(value=value), patch("integration.build_opener") as opener:
+                with self.assertRaises(ValueError):
+                    request_analysis("https://example.invalid/v1", "dummy-key", "test", {}, "检查", user_agent=value)
+                opener.assert_not_called()
+        self.assertTrue(client_user_agent(" ").startswith("PIDAssistant/"))
 
 
 if __name__ == "__main__":

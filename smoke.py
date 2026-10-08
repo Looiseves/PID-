@@ -172,23 +172,27 @@ def run_smoke(app, window, folder):
         dialog.key.setText("dummy-secret-ui-validation")
         dialog.base_url.setText("https://example.invalid/v1")
         dialog.model.setText("test-model")
+        dialog.user_agent.setText("PIDAssistant-Test/1.0")
         dialog.remember.setChecked(False)
         dialog.save()
         settings = json.loads((window.data_dir / "model-settings.json").read_text(encoding="utf-8"))
         check("model_settings_exclude_api_key", "dummy-secret-ui-validation" not in json.dumps(settings) and window.api_key == "dummy-secret-ui-validation")
         check("key_hidden_in_settings", dialog.key.echoMode() == QtWidgets.QLineEdit.EchoMode.Password)
+        check("client_identifier_saved_and_restored", settings["user_agent"] == "PIDAssistant-Test/1.0" and ModelSettingsDialog(window).user_agent.text() == "PIDAssistant-Test/1.0")
         window.api_key = ""
         window.publish_bridge()
         check("mcp_snapshot_excludes_api_credentials", "dummy-secret-ui-validation" not in (window.data_dir / "snapshot.json").read_text(encoding="utf-8"))
         import threading
         from http.server import BaseHTTPRequestHandler, HTTPServer
         api_requests = []
+        api_headers = []
         class ApiHandler(BaseHTTPRequestHandler):
             def log_message(self, *args):
                 pass
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 api_requests.append(body)
+                api_headers.append(self.headers.get("User-Agent"))
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
@@ -212,6 +216,7 @@ def run_smoke(app, window, folder):
             check("api_button_executes_real_http_and_displays_result", len(api_requests) == 1 and "验证建议" in window.ai_result.toPlainText())
             check("api_analysis_keeps_parameters_and_device_unchanged", window.params.kp == old_params and window.worker is None)
             check("api_worker_restores_button_and_shows_usage", window.ai_button.isEnabled() and "36" in window.ai_status.text())
+            check("api_worker_sends_configured_client_identifier", api_headers == ["PIDAssistant-Test/1.0"])
             window.grab().save(str(folder / "model-analysis.png"))
         finally:
             server.shutdown()

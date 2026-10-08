@@ -42,7 +42,7 @@ class RoundWorker(QtCore.QThread):
                 estimate=len(json.dumps(context,ensure_ascii=False).encode('utf-8'))+len(AUTO_PROMPT.encode('utf-8'))+1800
                 if estimate > self.metadata['remaining_tokens']:raise ValueError('剩余 token 预算不足以覆盖本轮请求；CSV 已保存')
                 self.called=True
-                text,usage=request_analysis(self.settings['base_url'],self.key,self.settings['model'],context,'给出下一轮 JSON 决策。',self.settings['api_mode'],system_prompt=AUTO_PROMPT)
+                text,usage=request_analysis(self.settings['base_url'],self.key,self.settings['model'],context,'给出下一轮 JSON 决策。',self.settings['api_mode'],system_prompt=AUTO_PROMPT,user_agent=self.settings.get('user_agent',''))
                 called=True
             atomic_json(self.folder/(stem+'-response.json'),{'text':text,'usage':usage,'provider':self.provider,'model_called':called})
             decision=parse_decision(text,self.config,{k:self.metadata[k] for k in KEYS})

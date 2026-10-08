@@ -4,13 +4,15 @@
 
 一款 Windows 原生桌面工具，把实时波形、PID 参数、数据看板和实验分析放进同一个工作台。双击 EXE 即可体验，无需安装 Python；默认使用模拟设备，不需要 API Key。
 
-[下载 Windows 版 v0.11.0](https://github.com/Looiseves/PID_LAB/releases/tag/v0.11.0) · [使用说明](docs/USER_GUIDE.md) · [界面图集](docs/UI_GALLERY.md) · [版本记录](CHANGELOG.md)
+[下载 Windows 版 v0.11.1](https://github.com/Looiseves/PID_LAB/releases/tag/v0.11.1) · [使用说明](docs/USER_GUIDE.md) · [界面图集](docs/UI_GALLERY.md) · [版本记录](CHANGELOG.md)
 
 ![实时波形工作台](docs/images/waveform.png)
 
 *大波形区与独立信号列表。截图为本地模拟数据。*
 
 v0.11.0 新增 AI 自动调参：按完整观察窗口采集与导出 CSV，在授权范围内分轮分析、应用并回读验证，以连续达标或明确停止规则结束。保留人工建议模式、源码编辑、通信诊断与 Codex 接入。
+
+v0.11.1 修复要求客户端标识的中转站接入：模型设置可填写 User-Agent，并提供米醋外接预设，普通分析与自动调参使用同一配置。已用用户本机密钥验证米醋 Responses 文本响应；没有用此证明真实小车自动调参效果。
 
 ## 主要功能
 

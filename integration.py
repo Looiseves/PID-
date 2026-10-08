@@ -201,9 +201,19 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def request_analysis(base_url, api_key, model, context, question, api_mode="Chat Completions", *, system_prompt=SYSTEM_PROMPT):
+MICU_CODEX_USER_AGENT = "codex_cli_rs/0.77.0 (Windows 10.0.26100; x86_64) WindowsTerminal PIDAssistant"
+
+
+def client_user_agent(value=""):
+    if not isinstance(value, str) or len(value) > 512 or any(ord(c) < 32 or ord(c) > 126 for c in value):
+        raise ValueError("客户端标识应为不超过 512 个字符的单行 ASCII 文本")
+    return value.strip() or "PIDAssistant/" + VERSION
+
+
+def request_analysis(base_url, api_key, model, context, question, api_mode="Chat Completions", *, system_prompt=SYSTEM_PROMPT, user_agent=""):
     if not api_key.strip() or not model.strip():
         raise ValueError("请在模型设置中填写 API Key 和模型名称")
+    user_agent = client_user_agent(user_agent)
     user = json.dumps(context, ensure_ascii=False, allow_nan=False) + "\n\n用户问题：" + question[:4000]
     if api_mode == "Responses":
         body = {"model": model.strip(), "instructions": system_prompt, "input": user,
@@ -214,7 +224,7 @@ def request_analysis(base_url, api_key, model, context, question, api_mode="Chat
                                                       {"role": "user", "content": user}],
                 token_key: 1800, "stream": False}
     request = Request(api_endpoint(base_url, api_mode), json.dumps(body, ensure_ascii=False).encode("utf-8"),
-                      {"Authorization": "Bearer " + api_key.strip(), "Content-Type": "application/json"})
+                      {"Authorization": "Bearer " + api_key.strip(), "Content-Type": "application/json", "User-Agent": user_agent})
     try:
         handlers = [NoRedirect()]
         if urlsplit(request.full_url).hostname in {"127.0.0.1", "localhost", "::1"}:

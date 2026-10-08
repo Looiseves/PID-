@@ -92,11 +92,12 @@ def run_autotune(app,w,folder,check):
     begin();w.experiment.samples[-1]['actual']=float('nan');ctrl.tick()
     check('auto_nonfinite_feedback_stops_run',not ctrl.active and '异常' in ctrl.reason)
 
-    state={'reply':'apply','gate':None,'requests':[]}
+    state={'reply':'apply','gate':None,'requests':[],'client_identifiers':[]}
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
             body=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
             context=json.loads(body['messages'][1]['content'].split('\n\n用户问题：')[0]);state['requests'].append((body,context))
+            state['client_identifiers'].append(self.headers.get('User-Agent'))
             gate=state['gate']
             if gate:gate.wait(5)
             p={k:context['experiment'][k] for k in ('kp','ki','kd')};p['ki']+=.05
@@ -110,9 +111,10 @@ def run_autotune(app,w,folder,check):
     server=ThreadingHTTPServer(('127.0.0.1',0),Handler);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     settings=copy.deepcopy(w.model_settings);key=w.api_key
     try:
-        w.api_key='dummy-auto-smoke-key';w.model_settings={'base_url':f'http://127.0.0.1:{server.server_port}/v1','model':'local-auto-test','api_mode':'Chat Completions'}
+        w.api_key='dummy-auto-smoke-key';w.model_settings={'base_url':f'http://127.0.0.1:{server.server_port}/v1','model':'local-auto-test','api_mode':'Chat Completions','user_agent':'PIDAssistant-Auto-Test/1.0'}
         begin(provider='api');before=w.params.ki;feed(.5)
         check('auto_real_background_http_round_applies_valid_json',w.params.ki==before+.05 and ctrl.calls==1 and ctrl.tokens==100)
+        check('auto_round_sends_configured_client_identifier',state['client_identifiers'][-1]=='PIDAssistant-Auto-Test/1.0')
         body,context=state['requests'][-1]
         check('auto_api_sends_csv_metadata_goals_and_structured_prompt', 'csv_text' in context and 'bounds' in context and 'JSON' in body['messages'][0]['content'] and context['csv_sampling']['full_points']==221)
         check('auto_api_exports_do_not_contain_key',all('dummy-auto-smoke-key' not in path.read_text(encoding='utf-8-sig') for path in ctrl.folder.iterdir() if path.suffix in ('.json','.csv')))
