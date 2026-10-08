@@ -246,6 +246,8 @@ def run_smoke(app, window, folder):
         run_comparison(app,window,folder,check)
         from smoke_analysis import run_analysis
         run_analysis(app,window,folder,check)
+        from smoke_autotune import run_autotune
+        run_autotune(app,window,folder,check)
         (folder / "smoke-result.json").write_text(json.dumps({"passed": True, "checks": checks}, ensure_ascii=False, indent=2), encoding="utf-8")
         window.close()
         app.exit(0)

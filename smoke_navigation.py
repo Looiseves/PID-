@@ -41,6 +41,10 @@ def run_navigation(app, w, folder, check):
     check("rounded_highlight_moves_and_resizes_in_flight", middle != start and middle != nav.header.row_rect(nav.headings["工作台"]) and middle.width() != start.width())
     check("highlight_uses_small_rebound", nav.header.motion.easingCurve().type() == QtCore.QEasingCurve.Type.OutBack and nav.header.motion.easingCurve().overshoot() < 1)
     QTest.qWait(300)
+    for _ in range(50):
+        if nav.header.motion.state() == QtCore.QAbstractAnimation.State.Stopped:
+            break
+        QTest.qWait(20)
     check("highlight_finishes_on_target_geometry", nav.header.highlight == nav.header.row_rect(nav.headings["工作台"]))
     nav.mode_selector.setCurrentText("侧栏导航")
     QTest.qWait(380)

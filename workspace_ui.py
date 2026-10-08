@@ -577,6 +577,8 @@ def build_workspace(w):
     from dashboard_nav import DashboardNavigation
     w.navigation = DashboardNavigation(w, bar)
     view.addAction("快速跳转（Ctrl+K）", w.navigation.palette.toggle)
+    from autotune import install
+    install(w,bar)
     apply_theme(w, w.theme_name)
     apply_layout(w, "示波器")
 
@@ -593,6 +595,8 @@ def apply_layout(w, name):
     w.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, w.monitor_dock)
     w.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, w.analysis_dock)
     w.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, w.source_dock)
+    if hasattr(w,"auto_dock"):
+        w.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea,w.auto_dock)
     if name == "示波器":
         w.channels_dock.show()
         w.tabs.setCurrentIndex(0)
@@ -632,7 +636,7 @@ def apply_theme(w, name):
         palette.setColor(role, QtGui.QColor(value))
     app.setPalette(palette)
     app.setStyleSheet(theme_styles(name))
-    for plot in (w.plot, w.compare_plot):
+    for plot in (w.plot, w.compare_plot, *([w.auto_panel.plot] if hasattr(w,"auto_panel") else [])):
         plot.setBackground(p["plot"])
         for axis in ("bottom", "left"):
             item = plot.getAxis(axis)
@@ -705,6 +709,9 @@ def restore_perspective(w):
 
 
 def start_api_analysis(w):
+    if getattr(w,"auto_tuner",None) and (w.auto_tuner.active or w.auto_tuner.worker and w.auto_tuner.worker.isRunning()):
+        w.ai_status.setText("自动调参正在运行，不能叠加模型请求")
+        return
     if w.api_worker and w.api_worker.isRunning():
         return
     if not w.api_key or not w.model_settings.get("model"):
@@ -743,6 +750,9 @@ def api_result(w, text, usage, worker=None):
 
 
 def stage_proposal(w):
+    if getattr(w,"auto_tuner",None) and w.auto_tuner.active:
+        w.proposal_label.setText("请先停止自动调参，再审阅 Codex 建议")
+        return
     if not w.pending_proposal:
         return
     if not proposal_current(w.pending_proposal,w.bridge,w.experiment):

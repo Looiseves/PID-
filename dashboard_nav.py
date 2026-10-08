@@ -23,6 +23,7 @@ SP = QtWidgets.QStyle.StandardPixmap
 DESTINATIONS = (
     Destination("scope", "实时波形", "查看信号、缩放曲线和读取采样点", "工作台", SP.SP_ComputerIcon, "scope wave 示波器"),
     Destination("tuning", "PID 调参", "边看波形边修改参数，核对板端回读", "工作台", SP.SP_MediaPlay, "kp ki kd serial 串口"),
+    Destination("auto", "AI 自动调参", "分轮采集、模型决策和应用回读", "工作台", SP.SP_MediaSeekForward, "auto 自动 闭环 优化"),
     Destination("source", "工程源码", "同屏编辑代码、绑定 PID 并预览写回工程", "工作台", SP.SP_DialogSaveButton, "code source c h 工程 同步 源码"),
     Destination("signals", "信号通道", "选择当前需要观察的波形通道", "工作台", SP.SP_FileDialogDetailedView, "channel"),
     Destination("dashboard", "数据看板", "监视常用参数，编辑数值卡片", "工作台", SP.SP_FileDialogListView, "dashboard monitor"),
@@ -750,6 +751,12 @@ class DashboardNavigation(QtCore.QObject):
                 w.monitor_dock.raise_()
         elif key == "tuning":
             apply_layout(w, "调参")
+        elif key == "auto":
+            apply_layout(w,"示波器")
+            w.channels_dock.hide()
+            w.auto_dock.show()
+            w.auto_dock.raise_()
+            w.resizeDocks([w.auto_dock],[440],QtCore.Qt.Orientation.Horizontal)
         elif key == "source":
             apply_layout(w, "调参")
             w.analysis_dock.hide()

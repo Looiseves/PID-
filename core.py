@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import mean
 
-VERSION = "0.10.0"
+VERSION = "0.11.0"
 CHANNELS = ["target", "actual", "error", "output", "p_term", "i_term", "d_term"]
 LABELS = dict(zip(CHANNELS, ["目标值", "实际值", "误差", "控制输出", "P 分量", "I 分量", "D 分量"]))
 SCENARIOS = ["正常跟踪", "响应迟缓", "振荡与延迟", "执行端饱和"]

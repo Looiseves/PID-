@@ -407,6 +407,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pause_button.setText("继续显示" if self.display_paused else "暂停显示")
 
     def toggle_running(self):
+        if getattr(self,"auto_tuner",None) and self.auto_tuner.active:
+            self.statusBar().showMessage("请先停止自动调参，再手动修改或重开实验",4000)
+            return
         if self.source != "模拟设备":
             return
         self.running = not self.running
@@ -414,6 +417,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.sim_remainder = 0
 
     def restart(self):
+        if getattr(self,"auto_tuner",None) and self.auto_tuner.active:
+            self.statusBar().showMessage("请先停止自动调参，再手动修改或重开实验",4000)
+            return
         if hasattr(self, "review_proposal"):
             self.pending_proposal = None
             self.review_proposal.setEnabled(False)
@@ -438,6 +444,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_advice()
 
     def change_scenario(self, text):
+        if getattr(self,"auto_tuner",None) and self.auto_tuner.active:
+            self.auto_tuner.finish("测试场景改变；自动调参已停止")
         if not hasattr(self, "log_view"):
             return
         self.simulator.scenario = text
@@ -457,6 +465,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.plot.removeItem(self.pid_markers.pop(0))
 
     def apply_parameters(self):
+        if getattr(self,"auto_tuner",None) and self.auto_tuner.active:
+            self.statusBar().showMessage("请先停止自动调参，再手动修改或重开实验",4000)
+            return
         if self.source == "离线回放":
             self.info("回放保留历史参数；请返回模拟后再修改。")
             return
@@ -478,6 +489,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_advice()
 
     def restore_parameters(self):
+        if getattr(self,"auto_tuner",None) and self.auto_tuner.active:
+            self.statusBar().showMessage("请先停止自动调参，再手动修改或重开实验",4000)
+            return
         old = copy.copy(self.previous_params)
         for key, spin in self.spins.items():
             spin.setValue(getattr(old, key))
@@ -493,6 +507,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.begin_connection(dialog.settings())
 
     def begin_connection(self, settings, demo=False):
+        if getattr(self,"auto_tuner",None):
+            self.auto_tuner.finish("设备连接切换；自动调参已停止")
         if self.worker and self.worker.isRunning():
             self.info('请先断开当前设备，再更换连接。')
             return
@@ -519,6 +535,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.worker.start()
 
     def start_live_demo(self):
+        if getattr(self,"auto_tuner",None):
+            self.auto_tuner.finish("设备连接切换；自动调参已停止")
         if not self.stop_worker():
             return
         live_tuning.stop(self)
@@ -537,6 +555,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.communication.packet('TX', data)
 
     def disconnect_device(self):
+        if getattr(self,"auto_tuner",None):
+            self.auto_tuner.finish("设备断开、切换或载入回放；自动调参已停止")
         if not self.stop_worker():
             return
         self.on_worker_finished(force=True)
@@ -620,6 +640,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.banner.setText('通信失败 · 原记录保留' if failed else '设备已断开 · 原记录保留')
 
     def return_to_simulator(self):
+        if getattr(self,"auto_tuner",None):
+            self.auto_tuner.finish("设备断开、切换或载入回放；自动调参已停止")
         if not self.stop_worker():
             return
         if getattr(self.worker, 'virtual_board', False):
@@ -731,6 +753,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.info(str(error))
 
     def load_experiment(self):
+        if getattr(self,"auto_tuner",None):
+            self.auto_tuner.finish("设备断开、切换或载入回放；自动调参已停止")
         path = self.choose_file("载入实验回放", save=False)
         if path:
             try:
@@ -803,6 +827,12 @@ class MainWindow(QtWidgets.QMainWindow):
         QtWidgets.QMessageBox.information(self, title, text)
 
     def closeEvent(self, event):
+        if getattr(self,"auto_tuner",None):
+            self.auto_tuner.finish("关闭窗口；不再提交新参数")
+            if self.auto_tuner.worker and self.auto_tuner.worker.isRunning():
+                self.statusBar().showMessage("自动分析请求尚在结束，请等待返回或超时后关闭；调参已停止。",4000)
+                event.ignore()
+                return
         if self.api_worker and self.api_worker.isRunning():
             self.statusBar().showMessage("模型请求尚未结束，请等待返回或超时后关闭。", 4000)
             event.ignore()

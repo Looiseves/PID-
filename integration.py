@@ -24,8 +24,20 @@ def atomic_json(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, allow_nan=False), encoding="utf-8")
-    os.replace(temporary, path)
+    try:
+        temporary.write_text(json.dumps(value, ensure_ascii=False, allow_nan=False), encoding="utf-8")
+        for attempt, delay in enumerate((0, .02, .06, .15)):
+            if delay:
+                time.sleep(delay)
+            try:
+                os.replace(temporary, path)
+                break
+            except PermissionError as error:
+                if getattr(error, "winerror", None) not in (5, 32) or attempt == 3:
+                    raise
+    finally:
+        if temporary.exists():
+            temporary.unlink()  # Only this explicitly created file; never a batch or directory.
 
 
 class LocalBridge:
@@ -189,16 +201,16 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def request_analysis(base_url, api_key, model, context, question, api_mode="Chat Completions"):
+def request_analysis(base_url, api_key, model, context, question, api_mode="Chat Completions", *, system_prompt=SYSTEM_PROMPT):
     if not api_key.strip() or not model.strip():
         raise ValueError("请在模型设置中填写 API Key 和模型名称")
     user = json.dumps(context, ensure_ascii=False, allow_nan=False) + "\n\n用户问题：" + question[:4000]
     if api_mode == "Responses":
-        body = {"model": model.strip(), "instructions": SYSTEM_PROMPT, "input": user,
+        body = {"model": model.strip(), "instructions": system_prompt, "input": user,
                 "max_output_tokens": 1800, "store": False}
     else:
         token_key = "max_completion_tokens" if urlsplit(base_url).hostname == "api.openai.com" else "max_tokens"
-        body = {"model": model.strip(), "messages": [{"role": "system", "content": SYSTEM_PROMPT},
+        body = {"model": model.strip(), "messages": [{"role": "system", "content": system_prompt},
                                                       {"role": "user", "content": user}],
                 token_key: 1800, "stream": False}
     request = Request(api_endpoint(base_url, api_mode), json.dumps(body, ensure_ascii=False).encode("utf-8"),

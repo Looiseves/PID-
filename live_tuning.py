@@ -66,6 +66,10 @@ def refresh(w):
     w.read_pid_button.setEnabled(w.hardware_connected and not busy)
     w.apply_button.setEnabled(w.hardware_connected and fresh and not busy)
     w.auto_pid.setEnabled(w.hardware_connected and fresh)
+    if getattr(w,"auto_tuner",None) and w.auto_tuner.active:
+        w.apply_button.setEnabled(False)
+        w.auto_pid.setEnabled(False)
+        w.read_pid_button.setEnabled(False)
     if session.actual:
         values = "   ".join(f"{k[1:].upper()} {session.actual[k]:.7g}" for k in KEYS)
         state = "等待新的应用确认" if busy and session.pending["operation"] == "set" else ("已回读" if fresh else "最后确认值，需重新读取")
@@ -125,6 +129,9 @@ def read(w):
 
 
 def submit(w):
+    if getattr(w,"auto_tuner",None) and w.auto_tuner.active:
+        w.parameter_label.setText("自动调参运行中，请先停止再手动应用")
+        return
     session = w.pid_session
     if not session or not w.hardware_connected:
         return
